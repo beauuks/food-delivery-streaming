@@ -1,0 +1,6 @@
+Collecting fastavro
+  Downloading fastavro-1.12.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (5.8 kB)
+Downloading fastavro-1.12.1-cp314-cp314-macosx_10_15_universal2.whl (1.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 4.9 MB/s  0:00:00
+Installing collected packages: fastavro
+Successfully installed fastavro-1.12.1

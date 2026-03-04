@@ -150,11 +150,17 @@ class SurgeConfig:
 class OutputConfig:
     # Write JSON events
     json_enabled: bool = True
-    json_output_dir: str = os.getenv("JSON_OUTPUT_DIR", "sample_data/json")
+    json_output_dir: str = os.getenv(
+        "JSON_OUTPUT_DIR",
+        os.path.join(os.path.dirname(__file__), "..", "sample_data", "json"),
+    )
 
     # Write AVRO events
     avro_enabled: bool = True
-    avro_output_dir: str = os.getenv("AVRO_OUTPUT_DIR", "sample_data/avro")
+    avro_output_dir: str = os.getenv(
+        "AVRO_OUTPUT_DIR",
+        os.path.join(os.path.dirname(__file__), "..", "sample_data", "avro"),
+    )
 
     # Kafka/Event Hubs output (milestone 2)
     kafka_enabled: bool = os.getenv("KAFKA_ENABLED", "false").lower() == "true"
