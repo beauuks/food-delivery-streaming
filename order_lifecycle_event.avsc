@@ -1,0 +1,179 @@
+{
+  "type": "record",
+  "name": "OrderLifecycleEvent",
+  "namespace": "com.fooddelivery.streams.v1",
+  "doc": "Represents a state transition in the order lifecycle. Each status change emits a new event, enabling full auditability and event-time processing.",
+  "fields": [
+    {
+      "name": "schema_version",
+      "type": "string",
+      "default": "1.0.0",
+      "doc": "Schema version for evolution tracking."
+    },
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "UUID for this specific event emission. Used for deduplication."
+    },
+    {
+      "name": "order_id",
+      "type": "string",
+      "doc": "Unique order identifier. Join key across feeds."
+    },
+    {
+      "name": "customer_id",
+      "type": "string",
+      "doc": "Customer identifier. Used for fraud heuristics (repeated cancellations)."
+    },
+    {
+      "name": "restaurant_id",
+      "type": "string",
+      "doc": "Restaurant identifier. Join key for restaurant SLA monitoring."
+    },
+    {
+      "name": "courier_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Assigned courier. Null until assignment. Join key with courier feed."
+    },
+    {
+      "name": "zone_id",
+      "type": "string",
+      "doc": "Geographic delivery zone. Used for zone-level analytics and surge detection."
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "OrderStatus",
+        "symbols": [
+          "PLACED",
+          "CONFIRMED",
+          "PREPARING",
+          "READY_FOR_PICKUP",
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "CANCELLED",
+          "REFUNDED"
+        ],
+        "doc": "Exhaustive set of order states. Transitions are tracked via event_time."
+      }
+    },
+    {
+      "name": "event_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Event-time: when this status transition actually occurred. Used for watermarking and windowed aggregation."
+    },
+    {
+      "name": "ingestion_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Wall-clock time event entered the pipeline. Delta from event_time reveals late arrivals."
+    },
+    {
+      "name": "order_value_eur",
+      "type": "double",
+      "doc": "Total monetary value of the order in EUR."
+    },
+    {
+      "name": "item_count",
+      "type": "int",
+      "doc": "Number of distinct items ordered."
+    },
+    {
+      "name": "is_promo",
+      "type": "boolean",
+      "default": false,
+      "doc": "Whether a promotional discount was applied."
+    },
+    {
+      "name": "promo_code",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Promo code used, if any."
+    },
+    {
+      "name": "payment_method",
+      "type": {
+        "type": "enum",
+        "name": "PaymentMethod",
+        "symbols": ["CARD", "CASH", "WALLET", "VOUCHER"]
+      }
+    },
+    {
+      "name": "estimated_prep_minutes",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Restaurant-provided ETA for preparation, set at CONFIRMED status."
+    },
+    {
+      "name": "actual_prep_minutes",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Computed at READY_FOR_PICKUP. Used for SLA monitoring."
+    },
+    {
+      "name": "estimated_delivery_minutes",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Platform ETA for delivery shown to customer."
+    },
+    {
+      "name": "actual_delivery_minutes",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Computed at DELIVERED. Basis for anomaly detection."
+    },
+    {
+      "name": "cancellation_reason",
+      "type": ["null", {
+        "type": "enum",
+        "name": "CancellationReason",
+        "symbols": ["CUSTOMER_REQUEST", "RESTAURANT_UNAVAILABLE", "NO_COURIER", "FRAUD_SUSPECTED", "TIMEOUT"]
+      }],
+      "default": null,
+      "doc": "Populated only when status == CANCELLED."
+    },
+    {
+      "name": "device_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Hashed device identifier. Used for fraud clustering."
+    },
+    {
+      "name": "platform",
+      "type": {
+        "type": "enum",
+        "name": "Platform",
+        "symbols": ["IOS", "ANDROID", "WEB"]
+      }
+    },
+    {
+      "name": "is_duplicate",
+      "type": "boolean",
+      "default": false,
+      "doc": "Flag injected by generator for streaming correctness testing."
+    },
+    {
+      "name": "is_late",
+      "type": "boolean",
+      "default": false,
+      "doc": "Flag injected by generator to simulate out-of-order late events."
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Extensible key-value metadata for future fields without schema break."
+    }
+  ]
+}

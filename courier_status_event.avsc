@@ -1,0 +1,163 @@
+{
+  "type": "record",
+  "name": "CourierStatusEvent",
+  "namespace": "com.fooddelivery.streams.v1",
+  "doc": "Represents a courier availability or location update. Emitted on status change and periodically as a heartbeat. Powers supply-demand health, session analytics, and surge prediction.",
+  "fields": [
+    {
+      "name": "schema_version",
+      "type": "string",
+      "default": "1.0.0",
+      "doc": "Schema version for evolution tracking."
+    },
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "UUID for this specific event. Used for deduplication."
+    },
+    {
+      "name": "courier_id",
+      "type": "string",
+      "doc": "Unique courier identifier. Join key with order feed."
+    },
+    {
+      "name": "order_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Current order being handled, if any. Null when IDLE or OFFLINE."
+    },
+    {
+      "name": "zone_id",
+      "type": "string",
+      "doc": "Current zone of the courier. Changes as courier moves."
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "CourierStatus",
+        "symbols": [
+          "ONLINE_IDLE",
+          "ONLINE_ASSIGNED",
+          "HEADING_TO_RESTAURANT",
+          "AT_RESTAURANT",
+          "HEADING_TO_CUSTOMER",
+          "COMPLETED_DELIVERY",
+          "OFFLINE",
+          "BREAK"
+        ],
+        "doc": "Fine-grained courier state machine enabling session window analytics."
+      }
+    },
+    {
+      "name": "event_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Event-time: when this status/location update occurred on the courier device."
+    },
+    {
+      "name": "ingestion_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Wall-clock pipeline ingestion time. Delta reveals late events."
+    },
+    {
+      "name": "latitude",
+      "type": "double",
+      "doc": "Courier GPS latitude at event time."
+    },
+    {
+      "name": "longitude",
+      "type": "double",
+      "doc": "Courier GPS longitude at event time."
+    },
+    {
+      "name": "location_accuracy_meters",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "GPS accuracy. Low accuracy signals may indicate spoofed location."
+    },
+    {
+      "name": "speed_kmh",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "Current speed. Anomalously high values flag impossible couriers."
+    },
+    {
+      "name": "battery_pct",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Device battery percentage. Low battery can predict sudden OFFLINE events."
+    },
+    {
+      "name": "vehicle_type",
+      "type": {
+        "type": "enum",
+        "name": "VehicleType",
+        "symbols": ["BICYCLE", "SCOOTER", "MOTORCYCLE", "CAR", "WALKING"]
+      }
+    },
+    {
+      "name": "active_session_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Session identifier grouping ONLINE events until OFFLINE. Enables session window analytics."
+    },
+    {
+      "name": "session_start_time",
+      "type": ["null", {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }],
+      "default": null,
+      "doc": "When this courier session began (first ONLINE event of the session)."
+    },
+    {
+      "name": "deliveries_completed_this_session",
+      "type": "int",
+      "default": 0,
+      "doc": "Running count of deliveries in current session. Resets on new session."
+    },
+    {
+      "name": "is_heartbeat",
+      "type": "boolean",
+      "default": false,
+      "doc": "True if emitted on a periodic interval (not a real state change). Used for availability tracking."
+    },
+    {
+      "name": "is_duplicate",
+      "type": "boolean",
+      "default": false,
+      "doc": "Flag injected by generator for streaming correctness testing."
+    },
+    {
+      "name": "is_late",
+      "type": "boolean",
+      "default": false,
+      "doc": "Flag injected by generator to simulate out-of-order late events."
+    },
+    {
+      "name": "offline_reason",
+      "type": ["null", {
+        "type": "enum",
+        "name": "OfflineReason",
+        "symbols": ["VOLUNTARY", "BATTERY_DEAD", "APP_CRASH", "MID_DELIVERY_DROP", "SHIFT_END"]
+      }],
+      "default": null,
+      "doc": "Populated only when status == OFFLINE. MID_DELIVERY_DROP is a critical edge case."
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Extensible key-value metadata for future fields without schema break."
+    }
+  ]
+}
