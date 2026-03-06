@@ -84,26 +84,19 @@ An **Order Lifecycle Event** is emitted every time an order transitions between 
 
 ```mermaid
 flowchart LR
-    %% Style definitions for the nodes
+    %% Style definitions
     classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
     classDef exception fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
 
-    subgraph Order_Lifecycle ["Order Status Lifecycle"]
-        direction LR
-        
-        PLACED --> CONFIRMED
-        CONFIRMED --> PREPARING
-        PREPARING --> READY_FOR_PICKUP
-        READY_FOR_PICKUP --> PICKED_UP
-        PICKED_UP --> IN_TRANSIT
-        IN_TRANSIT --> DELIVERED
+    PLACED --> CONFIRMED
+    CONFIRMED --> PREPARING
+    PREPARING --> READY_FOR_PICKUP
+    READY_FOR_PICKUP --> PICKED_UP
+    PICKED_UP --> IN_TRANSIT
+    IN_TRANSIT --> DELIVERED
 
-        CONFIRMED --> CANCELLED:::exception
-        CANCELLED --> REFUNDED:::exception
-    end
-
-    %% Style definition for the background box itself
-    style Order_Lifecycle fill:#f6f8fa,stroke:#d0d7de,stroke-width:2px,color:#24292f,stroke-dasharray: 5 5
+    CONFIRMED --> CANCELLED:::exception
+    CANCELLED --> REFUNDED:::exception
 ```
 
 **Key fields for analytics:**
@@ -141,22 +134,15 @@ flowchart LR
     %% Style definitions for the nodes
     classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
 
-    subgraph Courier_Lifecycle ["Courier Status Lifecycle"]
-        direction LR
-        
-        OFFLINE --> ONLINE_IDLE
-        ONLINE_IDLE --> ONLINE_ASSIGNED
-        ONLINE_ASSIGNED --> HEADING_TO_RESTAURANT
-        HEADING_TO_RESTAURANT --> AT_RESTAURANT
-        AT_RESTAURANT --> HEADING_TO_CUSTOMER
-        HEADING_TO_CUSTOMER --> COMPLETED_DELIVERY
-        
-        COMPLETED_DELIVERY --> ONLINE_IDLE
-        COMPLETED_DELIVERY --> OFFLINE
-    end
-
-    %% Style definition for the background box (white fill)
-    style Courier_Lifecycle fill:#ffffff,stroke:#d0d7de,stroke-width:2px,color:#24292f,stroke-dasharray: 5 5
+    OFFLINE --> ONLINE_IDLE
+    ONLINE_IDLE --> ONLINE_ASSIGNED
+    ONLINE_ASSIGNED --> HEADING_TO_RESTAURANT
+    HEADING_TO_RESTAURANT --> AT_RESTAURANT
+    AT_RESTAURANT --> HEADING_TO_CUSTOMER
+    HEADING_TO_CUSTOMER --> COMPLETED_DELIVERY
+    
+    COMPLETED_DELIVERY --> ONLINE_IDLE
+    COMPLETED_DELIVERY --> OFFLINE
 ```
 
 **Key fields for analytics:**
