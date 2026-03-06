@@ -1,86 +1,68 @@
-# 🚀 Real-Time Food Delivery Streaming Analytics
+# Real-Time Food Delivery Streaming Analytics
 
 > **Course Project – Milestone 1: Streaming Data Feed Design & Generation**
-> Big Data & Streaming Systems | Academic Year 2024/25
+> Stream Analytics | Academic Year 2025/26
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Team Structure](#team-structure)
-3. [Architecture Overview](#architecture-overview)
-4. [Feed Design](#feed-design)
+2. [Architecture Overview](#architecture-overview)
+3. [Feed Design](#feed-design)
    - [Feed 1: Order Lifecycle Events](#feed-1-order-lifecycle-events)
    - [Feed 2: Courier Status Events](#feed-2-courier-status-events)
    - [Design Justification](#design-justification)
-5. [Schema Design](#schema-design)
-6. [Data Generator](#data-generator)
-7. [Realism & Edge Cases](#realism--edge-cases)
-8. [Repository Structure](#repository-structure)
-9. [Quick Start](#quick-start)
-10. [Planned Analytics (Milestone 2 Preview)](#planned-analytics-milestone-2-preview)
+4. [Schema Design](#schema-design)
+5. [Data Generator](#data-generator)
+6. [Realism & Edge Cases](#realism--edge-cases)
+7. [Repository Structure](#repository-structure)
+8. [Quick Start](#quick-start)
+9. [Planned Analytics (Milestone 2)](#planned-analytics-milestone-2)
 
 ---
 
 ## Project Overview
 
-This project implements a production-grade **real-time analytics pipeline** for a food delivery platform (analogous to Uber Eats, Glovo, or Deliveroo). The platform operates as a real-time marketplace connecting customers, restaurants, and couriers — generating high-volume streaming data that must be processed, stored, and visualised with minimal latency.
+This project implements a **real-time analytics pipeline** for a food delivery platform (analogous to Uber Eats, Glovo, or Deliveroo). The platform operates as a real-time marketplace connecting customers, restaurants, and couriers — generating high-volume streaming data that must be processed, stored, and visualised with minimal latency.
 
 **Milestone 1** delivers:
-- Two carefully designed streaming data feeds with full AVRO schemas
-- A sophisticated Python event generator supporting realistic distributions, configurable parameters, and a comprehensive suite of streaming edge cases
+- Two streaming data feeds with full AVRO schemas
+- A Python event generator supporting realistic distributions, configurable parameters, and a comprehensive suite of streaming edge cases
 - Sample data in both JSON and AVRO formats
 - A design document justifying all architectural choices with respect to planned analytics
 
 ---
 
-## Team Structure
-
-| Role | Responsibility |
-|------|---------------|
-| Feed Designer | Schema design, analytics requirements mapping |
-| Generator Engineer | Python simulator, distribution modelling |
-| Data Quality Lead | Edge case injection, streaming correctness |
-| Documentation Lead | Design notes, README, milestone deliverables |
-
----
-
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     MILESTONE 1 (This Deliverable)                  │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                    Python Simulator                          │  │
-│  │                                                              │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────┐  │  │
-│  │  │  Demand     │   │  Reference  │   │  Edge Case       │  │  │
-│  │  │  Model      │   │  Data       │   │  Injector        │  │  │
-│  │  │  (temporal) │   │  (entities) │   │  (late/dup/fraud) │  │  │
-│  │  └──────┬──────┘   └──────┬──────┘   └────────┬─────────┘  │  │
-│  │         └─────────────────┴───────────────────┘            │  │
-│  │                           │                                 │  │
-│  │             ┌─────────────▼──────────────┐                 │  │
-│  │             │     Event Factories         │                 │  │
-│  │             │  (order_sequence,           │                 │  │
-│  │             │   courier_event)            │                 │  │
-│  │             └─────────────┬──────────────┘                 │  │
-│  │                           │                                 │  │
-│  │          ┌────────────────┼────────────────┐               │  │
-│  │          │                │                │               │  │
-│  │          ▼                ▼                ▼               │  │
-│  │      JSON files      AVRO files       Kafka/EH             │  │
-│  │      (sample)        (sample)         (stream, M2)         │  │
-│  └──────────────────────────────────────────────────────────── │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-              ┌──────────────────▼───────────────────┐
-              │        MILESTONE 2 (Upcoming)        │
-              │  Azure Event Hubs → Spark Streaming  │
-              │  → Parquet (Blob) + Dashboard        │
-              └──────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph M1 ["MILESTONE 1"]
+        subgraph Sim ["Python Simulator"]
+            DM["Demand Model<br/>(temporal)"]
+            RD["Reference Data<br/>(entities)"]
+            ECI["Edge Case Injector<br/>(late/dup/fraud)"]
+            
+            EF["Event Factories<br/>(order_sequence, courier_event)"]
+            
+            DM --> EF
+            RD --> EF
+            ECI --> EF
+            
+            JSON["JSON files<br/>(sample)"]
+            AVRO["AVRO files<br/>(sample)"]
+            KAFKA["Kafka/EH<br/>(stream)"]
+            
+            EF --> JSON
+            EF --> AVRO
+            EF --> KAFKA
+        end
+    end
+
+    M2["MILESTONE 2 (Upcoming)<br/>Azure Event Hubs<br/>&rarr; Spark Streaming<br/>&rarr; Parquet (Blob) + Dashboard"]
+
+    M1 --> M2
 ```
 
 ---
@@ -100,12 +82,28 @@ An **Order Lifecycle Event** is emitted every time an order transitions between 
 
 **State Machine:**
 
-```
-PLACED → CONFIRMED → PREPARING → READY_FOR_PICKUP → PICKED_UP → IN_TRANSIT → DELIVERED
-         │
-         └──────────────────────────────────────────────────────────────────→ CANCELLED
-                                                                                  │
-                                                                                  └→ REFUNDED
+```mermaid
+flowchart LR
+    %% Style definitions for the nodes
+    classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
+    classDef exception fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
+
+    subgraph Order_Lifecycle ["Order Status Lifecycle"]
+        direction LR
+        
+        PLACED --> CONFIRMED
+        CONFIRMED --> PREPARING
+        PREPARING --> READY_FOR_PICKUP
+        READY_FOR_PICKUP --> PICKED_UP
+        PICKED_UP --> IN_TRANSIT
+        IN_TRANSIT --> DELIVERED
+
+        CONFIRMED --> CANCELLED:::exception
+        CANCELLED --> REFUNDED:::exception
+    end
+
+    %% Style definition for the background box itself
+    style Order_Lifecycle fill:#f6f8fa,stroke:#d0d7de,stroke-width:2px,color:#24292f,stroke-dasharray: 5 5
 ```
 
 **Key fields for analytics:**
@@ -138,11 +136,27 @@ A **Courier Status Event** is emitted when a courier's state changes (assignment
 
 **State Machine:**
 
-```
-OFFLINE → ONLINE_IDLE → ONLINE_ASSIGNED → HEADING_TO_RESTAURANT
-                                              → AT_RESTAURANT → HEADING_TO_CUSTOMER
-                                                                    → COMPLETED_DELIVERY → ONLINE_IDLE
-                                                                                        └→ OFFLINE
+```mermaid
+flowchart LR
+    %% Style definitions for the nodes
+    classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
+
+    subgraph Courier_Lifecycle ["Courier Status Lifecycle"]
+        direction LR
+        
+        OFFLINE --> ONLINE_IDLE
+        ONLINE_IDLE --> ONLINE_ASSIGNED
+        ONLINE_ASSIGNED --> HEADING_TO_RESTAURANT
+        HEADING_TO_RESTAURANT --> AT_RESTAURANT
+        AT_RESTAURANT --> HEADING_TO_CUSTOMER
+        HEADING_TO_CUSTOMER --> COMPLETED_DELIVERY
+        
+        COMPLETED_DELIVERY --> ONLINE_IDLE
+        COMPLETED_DELIVERY --> OFFLINE
+    end
+
+    %% Style definition for the background box (white fill)
+    style Courier_Lifecycle fill:#ffffff,stroke:#d0d7de,stroke-width:2px,color:#24292f,stroke-dasharray: 5 5
 ```
 
 **Key fields for analytics:**
@@ -288,9 +302,9 @@ The generator implements the full spectrum of edge cases required for demonstrat
 
 ```
 food-delivery-streaming/
-├── README.md                          # This file
+├── README.md                          
 ├── docs/
-│   └── milestone1_design.md           # Detailed design document
+│   └── milestone1_design.md           # Design document
 ├── schemas/
 │   ├── order_lifecycle_event.avsc     # AVRO schema: order events
 │   └── courier_status_event.avsc      # AVRO schema: courier events
@@ -317,7 +331,7 @@ food-delivery-streaming/
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url>
+git clone https://github.com/beauuks/food-delivery-streaming.git
 cd food-delivery-streaming
 
 # 2. Install dependencies
@@ -359,25 +373,25 @@ python simulator.py --mode batch
 
 ---
 
-## Planned Analytics (Milestone 2 Preview)
+## Planned Analytics (Milestone 2)
 
 The feed design was driven by the analytics we intend to implement in Milestone 2:
 
-### Use Case 1 – Windowed KPIs (Basic)
+### Use Case 1 – Windowed KPIs
 - Orders placed per 5-minute tumbling window, by zone
 - Revenue per 1-hour hopping window
 - Courier utilisation rate per 15-minute window
 
 *Why our feeds support this:* Every event carries `event_time`, `zone_id`, `order_value_eur`. The watermark on `event_time` with `LATE_EVENT_RATE` will demonstrate late-data handling.
 
-### Use Case 2 – Demand-Supply Health per Zone (Intermediate)
+### Use Case 2 – Demand-Supply Health per Zone 
 - Join order feed (PLACED events awaiting assignment) with courier feed (ONLINE_IDLE count)
 - Compute `demand_supply_ratio = pending_orders / available_couriers` per zone per window
 - Alert when ratio > 3 (supply gap) or < 0.3 (oversupply)
 
 *Why our feeds support this:* Both feeds carry `zone_id`. Courier heartbeats maintain a current count of ONLINE_IDLE couriers per zone. Order PLACED events without a courier assignment signal unmet demand.
 
-### Use Case 3 – Anomaly Detection on Delivery Times (Advanced)
+### Use Case 3 – Anomaly Detection on Delivery Times
 - Compute rolling mean and std of `actual_delivery_minutes` per zone
 - Flag orders > mean + 3σ as anomalies (z-score outlier)
 - Handle late events: events arriving after watermark still trigger recomputation
