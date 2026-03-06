@@ -95,7 +95,7 @@ flowchart LR
     PICKED_UP --> IN_TRANSIT
     IN_TRANSIT --> DELIVERED
 
-    CONFIRMED --> CANCELLED:::exception
+    PLACED --> CANCELLED:::exception
     CANCELLED --> REFUNDED:::exception
 ```
 
