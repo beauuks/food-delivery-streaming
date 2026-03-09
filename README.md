@@ -37,6 +37,14 @@ This project implements a **real-time analytics pipeline** for a food delivery p
 
 ## Team Structure
 
+| Name | Role | Responsibilities |
+|------|------|-----------------|
+| Beau | Lead Engineer & Architect | Core system architecture, generator engineering, AVRO serialisation layer, schema design, infrastructure setup, sample data generation, and overall technical implementation |
+| Rania Mansouri | Project Lead & Feed Designer | Overall project coordination, feed design justification, analytics requirements mapping, milestone deliverable management |
+| Maciej | Generator Engineer | Python simulator support, demand model tuning, batch and stream mode orchestration |
+| Ana | Schema Designer | AVRO schema field definitions, type decisions, schema evolution strategy, null safety design |
+| Leen | Data Quality Lead | Edge case injection logic, streaming correctness validation, duplicate and late event handling |
+| Sebastian | Documentation Lead | README writing, milestone1_design.md, design notes, repository structure and organisation |
 
 
 ---
