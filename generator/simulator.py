@@ -315,10 +315,11 @@ def generate_batch(
 
 def stream_continuously(
     orders_per_second: float = BASE_ORDERS_PER_SECOND,
-    kafka_producer=None,
+    order_producer=None,
+    courier_producer=None,
 ):
     """
-    Continuously generate and emit events. Used in Milestone 2 with Kafka/Event Hubs.
+    Continuously generate and emit events to Event Hubs or stdout.
     Respects real-time demand curve.
     """
     customer_pool = CustomerPool()
@@ -330,57 +331,74 @@ def stream_continuously(
     surge_start = sim_start + SURGE.surge_trigger_seconds
     surge_end   = surge_start + SURGE.surge_duration_seconds
 
-    while True:
-        tick_start = time.time()
-        surge_active = SURGE.enabled and surge_start <= tick_start <= surge_end
+    try:
+        while True:
+            tick_start = time.time()
+            surge_active = SURGE.enabled and surge_start <= tick_start <= surge_end
 
-        demand = get_demand_multiplier(tick_start)
-        n_orders = max(1, int(orders_per_second * demand))
-        if surge_active:
-            n_orders = int(n_orders * SURGE.surge_multiplier)
+            demand = get_demand_multiplier(tick_start)
+            n_orders = max(1, int(orders_per_second * demand))
+            if surge_active:
+                n_orders = int(n_orders * SURGE.surge_multiplier)
 
-        base_ms = int(tick_start * 1000)
+            base_ms = int(tick_start * 1000)
 
-        # Heartbeats
-        for ev in courier_mgr.emit_heartbeats(base_ms):
-            _emit(ev, "courier", kafka_producer)
-        for ev in courier_mgr.bring_couriers_online(base_ms):
-            _emit(ev, "courier", kafka_producer)
+            # Heartbeats
+            for ev in courier_mgr.emit_heartbeats(base_ms):
+                _emit(ev, "courier", order_producer, courier_producer)
+            for ev in courier_mgr.bring_couriers_online(base_ms):
+                _emit(ev, "courier", order_producer, courier_producer)
 
-        # Orders
-        for _ in range(n_orders):
-            zone_id = pick_zone(surge_active, SURGE.surge_zone)
-            customer_id, device_id = customer_pool.sample(EDGE_CASES.fraud_burst_enabled)
-            zone_restaurants = [r for r in RESTAURANTS if r.zone_id == zone_id]
-            restaurant = random.choice(zone_restaurants if zone_restaurants else RESTAURANTS)
-            courier = courier_mgr.get_available_courier(zone_id)
+            # Orders
+            for _ in range(n_orders):
+                zone_id = pick_zone(surge_active, SURGE.surge_zone)
+                customer_id, device_id = customer_pool.sample(EDGE_CASES.fraud_burst_enabled)
+                zone_restaurants = [r for r in RESTAURANTS if r.zone_id == zone_id]
+                restaurant = random.choice(zone_restaurants if zone_restaurants else RESTAURANTS)
+                courier = courier_mgr.get_available_courier(zone_id)
 
-            events = make_order_sequence(
-                restaurant=restaurant, customer_id=customer_id, device_id=device_id,
-                zone_id=zone_id, courier=courier, base_event_time=base_ms,
-                skip_step=random.random() < EDGE_CASES.missing_step_rate,
-                impossible_duration=random.random() < EDGE_CASES.impossible_duration_rate,
-            )
-            for ev in events:
-                _emit(ev, "order", kafka_producer)
-                if random.random() < EDGE_CASES.duplicate_rate:
-                    dup = dict(ev); dup["is_duplicate"] = True
-                    _emit(dup, "order", kafka_producer)
+                events = make_order_sequence(
+                    restaurant=restaurant, customer_id=customer_id, device_id=device_id,
+                    zone_id=zone_id, courier=courier, base_event_time=base_ms,
+                    skip_step=random.random() < EDGE_CASES.missing_step_rate,
+                    impossible_duration=random.random() < EDGE_CASES.impossible_duration_rate,
+                )
+                for ev in events:
+                    _emit(ev, "order", order_producer, courier_producer)
+                    if random.random() < EDGE_CASES.duplicate_rate:
+                        dup = dict(ev); dup["is_duplicate"] = True
+                        _emit(dup, "order", order_producer, courier_producer)
 
-        tick += 1
-        elapsed = time.time() - tick_start
-        sleep_time = max(0, 1.0 - elapsed)
-        time.sleep(sleep_time)
+            tick += 1
+            if tick % 10 == 0:
+                print(f"[simulator] Tick {tick}: {n_orders} orders, surge={'ON' if surge_active else 'OFF'}")
+
+            elapsed = time.time() - tick_start
+            sleep_time = max(0, 1.0 - elapsed)
+            time.sleep(sleep_time)
+    except KeyboardInterrupt:
+        print("\n[simulator] Stopping...")
+    finally:
+        if order_producer:
+            order_producer.flush()
+            order_producer.close()
+        if courier_producer:
+            courier_producer.flush()
+            courier_producer.close()
 
 
-def _emit(event: Dict, feed: str, kafka_producer=None):
-    """Emit a single event to stdout, file, or Kafka."""
-    if kafka_producer:
-        # Milestone 2: emit to Kafka
-        topic = OUTPUT.order_topic if feed == "order" else OUTPUT.courier_topic
-        kafka_producer.send(topic, value=event)
+def _emit(event: Dict, feed: str, order_producer=None, courier_producer=None):
+    """Emit a single event to stdout or Event Hubs."""
+    if feed == "order" and order_producer:
+        partition_key = event.get("zone_id", "default")
+        order_producer.send(event, partition_key=partition_key)
+    elif feed == "courier" and courier_producer:
+        partition_key = event.get("zone_id", "default")
+        courier_producer.send(event, partition_key=partition_key)
     else:
-        print(f"[{feed.upper()}] {event['status'] if 'status' in event else '?'} | {event.get('order_id', event.get('courier_id'))}")
+        label = event.get("status", "?")
+        eid = event.get("order_id", event.get("courier_id"))
+        print(f"[{feed.upper()}] {label} | {eid}")
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +446,17 @@ def main():
         print(f"[simulator] Done. {len(order_events)} order events, {len(courier_events)} courier events.")
 
     elif args.mode == "stream":
-        stream_continuously()
+        order_producer, courier_producer = None, None
+        if os.getenv("EVENTHUB_ORDER_CONNECTION_STRING"):
+            from eventhub_producer import create_producers
+            order_producer, courier_producer = create_producers()
+            print("[simulator] Publishing to Azure Event Hubs")
+        else:
+            print("[simulator] No EVENTHUB_ORDER_CONNECTION_STRING set, printing to stdout")
+        stream_continuously(
+            order_producer=order_producer,
+            courier_producer=courier_producer,
+        )
 
 
 if __name__ == "__main__":
