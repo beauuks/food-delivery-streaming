@@ -8,17 +8,18 @@
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Architecture Overview](#architecture-overview)
-3. [Feed Design](#feed-design)
+2. [Team Structure](#team-structure)
+3. [Architecture Overview](#architecture-overview)
+4. [Feed Design](#feed-design)
    - [Feed 1: Order Lifecycle Events](#feed-1-order-lifecycle-events)
    - [Feed 2: Courier Status Events](#feed-2-courier-status-events)
    - [Design Justification](#design-justification)
-4. [Schema Design](#schema-design)
-5. [Data Generator](#data-generator)
-6. [Realism & Edge Cases](#realism--edge-cases)
-7. [Repository Structure](#repository-structure)
-8. [Quick Start](#quick-start)
-9. [Planned Analytics (Milestone 2)](#planned-analytics-milestone-2)
+5. [Schema Design](#schema-design)
+6. [Data Generator](#data-generator)
+7. [Realism & Edge Cases](#realism--edge-cases)
+8. [Repository Structure](#repository-structure)
+9. [Quick Start](#quick-start)
+10. [Planned Analytics (Milestone 2)](#planned-analytics-milestone-2)
 
 ---
 
@@ -31,6 +32,20 @@ This project implements a **real-time analytics pipeline** for a food delivery p
 - A Python event generator supporting realistic distributions, configurable parameters, and a comprehensive suite of streaming edge cases
 - Sample data in both JSON and AVRO formats
 - A design document justifying all architectural choices with respect to planned analytics
+
+---
+
+## Team Structure
+
+| Name | Role | Responsibilities |
+|------|------|-----------------|
+| Beau | Lead Engineer & Architect | Core system architecture, generator engineering, AVRO serialisation layer, schema design, infrastructure setup, sample data generation, and overall technical implementation |
+| Rania Mansouri | Project Lead & Feed Designer | Overall project coordination, feed design justification, analytics requirements mapping, milestone deliverable management |
+| Maciej | Generator Engineer | Python simulator support, demand model tuning, batch and stream mode orchestration |
+| Ana | Schema Designer | AVRO schema field definitions, type decisions, schema evolution strategy, null safety design |
+| Leen | Data Quality Lead | Edge case injection logic, streaming correctness validation, duplicate and late event handling |
+| Sebastian | Documentation Lead | README writing, milestone1_design.md, design notes, repository structure and organisation |
+
 
 ---
 
