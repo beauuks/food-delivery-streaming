@@ -10,6 +10,7 @@ Run modes:
 """
 
 import argparse
+import heapq
 import json
 import os
 import random
@@ -50,12 +51,86 @@ def get_demand_multiplier(ts: Optional[float] = None) -> float:
     return base * dow_mult
 
 
-def pick_zone(surge_active: bool = False, surge_zone: str = "") -> str:
-    """Pick a zone weighted by demand, with optional surge overlay."""
+class SurgeManager:
+    """Manages periodic, multi-zone demand surges."""
+
+    def __init__(self):
+        self.active_surges = []  # list of {zones, multiplier, end_time, reason}
+        self.next_surge_time = time.time() + random.uniform(
+            SURGE.min_interval_seconds / 2,  # first surge comes sooner
+            SURGE.min_interval_seconds,
+        )
+
+    _SURGE_REASONS = [
+        "Football match nearby",
+        "Concert ending",
+        "Heavy rain",
+        "Festival crowd",
+        "Office lunch rush",
+        "Late-night bar crowd",
+        "Weekend brunch wave",
+        "Metro disruption",
+    ]
+
+    def update(self, current_time: float):
+        """Check for new surges and expire old ones."""
+        # Expire finished surges
+        expired = [s for s in self.active_surges if current_time >= s["end_time"]]
+        for s in expired:
+            print(f"[surge] Ended in {', '.join(s['zones'])} ({s['reason']})")
+        self.active_surges = [s for s in self.active_surges if current_time < s["end_time"]]
+
+        # Trigger new surge?
+        if SURGE.enabled and current_time >= self.next_surge_time:
+            # Pick primary zone
+            primary_zone = random.choice(ZONE_IDS)
+            # Pick 0-2 adjacent zones
+            n_extra = random.randint(0, SURGE.max_zones_per_surge - 1)
+            adjacent = SURGE.ADJACENT_ZONES.get(primary_zone, [])
+            extra_zones = random.sample(adjacent, min(n_extra, len(adjacent)))
+            surge_zones = [primary_zone] + extra_zones
+
+            multiplier = round(random.uniform(SURGE.min_multiplier, SURGE.max_multiplier), 1)
+            duration = random.uniform(SURGE.min_duration_seconds, SURGE.max_duration_seconds)
+            reason = random.choice(self._SURGE_REASONS)
+
+            self.active_surges.append({
+                "zones": surge_zones,
+                "multiplier": multiplier,
+                "end_time": current_time + duration,
+                "reason": reason,
+            })
+            print(f"[surge] Started in {', '.join(surge_zones)} | {multiplier}x for {int(duration)}s | {reason}")
+
+            # Schedule next surge
+            self.next_surge_time = current_time + random.uniform(
+                SURGE.min_interval_seconds,
+                SURGE.max_interval_seconds,
+            )
+
+    def is_surging(self, zone_id: str) -> tuple[bool, float]:
+        """Check if a zone is currently surging. Returns (is_active, multiplier)."""
+        for s in self.active_surges:
+            if zone_id in s["zones"]:
+                return True, s["multiplier"]
+        return False, 1.0
+
+    def get_surge_zones(self) -> list[str]:
+        """Return all currently surging zones."""
+        zones = set()
+        for s in self.active_surges:
+            zones.update(s["zones"])
+        return list(zones)
+
+
+def pick_zone(surge_manager: "SurgeManager" = None) -> str:
+    """Pick a zone weighted by demand, with surge overlay."""
     weights = list(ZONE_WEIGHTS)
-    if surge_active and surge_zone:
-        idx = ZONE_IDS.index(surge_zone)
-        weights[idx] *= SURGE.surge_multiplier
+    if surge_manager:
+        for i, zone_id in enumerate(ZONE_IDS):
+            is_surging, mult = surge_manager.is_surging(zone_id)
+            if is_surging:
+                weights[i] *= mult
     total = sum(weights)
     weights = [w / total for w in weights]
     return random.choices(ZONE_IDS, weights=weights)[0]
@@ -89,6 +164,34 @@ class CustomerPool:
             return random.choice(cluster["customer_ids"]), cluster["device_id"]
         idx = random.randrange(self.size)
         return self.customer_ids[idx], self.device_ids[idx]
+
+
+# ---------------------------------------------------------------------------
+# Event queue for deferred emission (stream mode)
+# ---------------------------------------------------------------------------
+
+class EventQueue:
+    """Priority queue that holds events until their scheduled emit time."""
+
+    def __init__(self):
+        self._queue: List = []  # min-heap of (emit_time_ms, counter, event, feed)
+        self._counter = 0
+
+    def schedule(self, emit_time_ms: int, event: Dict, feed: str):
+        """Schedule an event for future emission."""
+        heapq.heappush(self._queue, (emit_time_ms, self._counter, event, feed))
+        self._counter += 1
+
+    def get_ready(self, current_time_ms: int) -> List[tuple]:
+        """Pop and return all events whose emit time has arrived."""
+        ready = []
+        while self._queue and self._queue[0][0] <= current_time_ms:
+            _, _, event, feed = heapq.heappop(self._queue)
+            ready.append((event, feed))
+        return ready
+
+    def __len__(self):
+        return len(self._queue)
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +330,7 @@ def generate_batch(
             if len(order_events) >= n_order_events:
                 break
 
-            zone_id = pick_zone(surge_active, SURGE.surge_zone)
+            zone_id = pick_zone()
             customer_id, device_id = customer_pool.sample(
                 fraud_burst=EDGE_CASES.fraud_burst_enabled
             )
@@ -320,38 +423,55 @@ def stream_continuously(
 ):
     """
     Continuously generate and emit events to Event Hubs or stdout.
-    Respects real-time demand curve.
+    Uses an event queue so lifecycle events are emitted at realistic times:
+    PLACED is emitted immediately, DELIVERED is emitted ~30-40 min later.
     """
     customer_pool = CustomerPool()
     courier_mgr   = CourierStateManager()
+    event_queue   = EventQueue()
 
     print("[simulator] Starting continuous stream. Press Ctrl+C to stop.")
     tick = 0
-    sim_start = time.time()
-    surge_start = sim_start + SURGE.surge_trigger_seconds
-    surge_end   = surge_start + SURGE.surge_duration_seconds
+    emitted_this_tick = 0
+    surge_mgr = SurgeManager()
 
     try:
         while True:
             tick_start = time.time()
-            surge_active = SURGE.enabled and surge_start <= tick_start <= surge_end
+            current_ms = int(tick_start * 1000)
+            emitted_this_tick = 0
 
+            # Update surge state (trigger new surges, expire old ones)
+            surge_mgr.update(tick_start)
+
+            # --- 1. Drain the event queue: emit events whose time has arrived ---
+            for event, feed in event_queue.get_ready(current_ms):
+                event["ingestion_time"] = int(time.time() * 1000)
+                _emit(event, feed, order_producer, courier_producer)
+                emitted_this_tick += 1
+
+            # --- 2. Courier heartbeats (emit immediately, they're real-time) ---
+            for ev in courier_mgr.emit_heartbeats(current_ms):
+                _emit(ev, "courier", order_producer, courier_producer)
+                emitted_this_tick += 1
+            for ev in courier_mgr.bring_couriers_online(current_ms):
+                _emit(ev, "courier", order_producer, courier_producer)
+                emitted_this_tick += 1
+
+            # --- 3. Generate new orders and schedule lifecycle events ---
             demand = get_demand_multiplier(tick_start)
-            n_orders = max(1, int(orders_per_second * demand))
-            if surge_active:
-                n_orders = int(n_orders * SURGE.surge_multiplier)
+            raw = orders_per_second * demand * random.uniform(0.5, 1.5)
+            # Allow 0 orders on low-demand ticks (e.g., 3am)
+            # Use probabilistic rounding: 0.3 means 30% chance of 1 order
+            n_orders = int(raw) if raw >= 1 else (1 if random.random() < raw else 0)
+            # Boost order count if any zone is surging
+            surge_zones = surge_mgr.get_surge_zones()
+            if surge_zones:
+                avg_mult = sum(surge_mgr.is_surging(z)[1] for z in surge_zones) / len(surge_zones)
+                n_orders = max(n_orders, int(n_orders * avg_mult * 0.5))
 
-            base_ms = int(tick_start * 1000)
-
-            # Heartbeats
-            for ev in courier_mgr.emit_heartbeats(base_ms):
-                _emit(ev, "courier", order_producer, courier_producer)
-            for ev in courier_mgr.bring_couriers_online(base_ms):
-                _emit(ev, "courier", order_producer, courier_producer)
-
-            # Orders
             for _ in range(n_orders):
-                zone_id = pick_zone(surge_active, SURGE.surge_zone)
+                zone_id = pick_zone(surge_mgr)
                 customer_id, device_id = customer_pool.sample(EDGE_CASES.fraud_burst_enabled)
                 zone_restaurants = [r for r in RESTAURANTS if r.zone_id == zone_id]
                 restaurant = random.choice(zone_restaurants if zone_restaurants else RESTAURANTS)
@@ -359,25 +479,94 @@ def stream_continuously(
 
                 events = make_order_sequence(
                     restaurant=restaurant, customer_id=customer_id, device_id=device_id,
-                    zone_id=zone_id, courier=courier, base_event_time=base_ms,
+                    zone_id=zone_id, courier=courier, base_event_time=current_ms,
                     skip_step=random.random() < EDGE_CASES.missing_step_rate,
                     impossible_duration=random.random() < EDGE_CASES.impossible_duration_rate,
                 )
+
                 for ev in events:
-                    _emit(ev, "order", order_producer, courier_producer)
+                    # Compute offset from now: how far in the future is this event?
+                    offset = ev["event_time"] - current_ms
+
+                    if offset <= 0:
+                        # PLACED event or late events: emit now
+                        ev["ingestion_time"] = int(time.time() * 1000)
+                        _emit(ev, "order", order_producer, courier_producer)
+                        emitted_this_tick += 1
+                    else:
+                        # Future event (CONFIRMED, DELIVERED, etc.): schedule
+                        event_queue.schedule(ev["event_time"], ev, "order")
+
+                    # Duplicate injection
                     if random.random() < EDGE_CASES.duplicate_rate:
-                        dup = dict(ev); dup["is_duplicate"] = True
-                        _emit(dup, "order", order_producer, courier_producer)
+                        dup = dict(ev)
+                        dup["is_duplicate"] = True
+                        if offset <= 0:
+                            dup["ingestion_time"] = int(time.time() * 1000)
+                            _emit(dup, "order", order_producer, courier_producer)
+                        else:
+                            event_queue.schedule(ev["event_time"], dup, "order")
+
+                # --- Schedule courier delivery events for this order ---
+                if courier and len(events) > 2:
+                    delivered_event = next((e for e in events if e["status"] == "DELIVERED"), None)
+                    if delivered_event:
+                        order_id = delivered_event["order_id"]
+
+                        # HEADING_TO_RESTAURANT: ~30s after order placed
+                        ev_h2r = make_courier_event(
+                            courier, "HEADING_TO_RESTAURANT",
+                            base_event_time=current_ms + 30000,
+                            order_id=order_id,
+                        )
+                        event_queue.schedule(current_ms + 30000, ev_h2r, "courier")
+
+                        # AT_RESTAURANT: ~2 min after order placed
+                        ev_at = make_courier_event(
+                            courier, "AT_RESTAURANT",
+                            base_event_time=current_ms + 120000,
+                            order_id=order_id,
+                        )
+                        event_queue.schedule(current_ms + 120000, ev_at, "courier")
+
+                        # Possibly drop mid-delivery
+                        drop_ev = courier_mgr.possibly_drop_courier(courier, order_id, current_ms + 180000)
+                        if drop_ev:
+                            event_queue.schedule(current_ms + 180000, drop_ev, "courier")
+                        else:
+                            # HEADING_TO_CUSTOMER: ~3.3 min after order placed
+                            ev_h2c = make_courier_event(
+                                courier, "HEADING_TO_CUSTOMER",
+                                base_event_time=current_ms + 200000,
+                                order_id=order_id,
+                            )
+                            event_queue.schedule(current_ms + 200000, ev_h2c, "courier")
+
+                            # COMPLETED_DELIVERY: at delivery time
+                            delivery_ms = current_ms + int(delivered_event.get("actual_delivery_minutes", 30) * 60000)
+                            completion_events = courier_mgr.courier_completed_delivery(courier, delivery_ms)
+                            for cev in completion_events:
+                                event_queue.schedule(delivery_ms, cev, "courier")
 
             tick += 1
+            orders_since_log = getattr(stream_continuously, '_orders_since_log', 0) + n_orders
+            stream_continuously._orders_since_log = orders_since_log
             if tick % 10 == 0:
-                print(f"[simulator] Tick {tick}: {n_orders} orders, surge={'ON' if surge_active else 'OFF'}")
+                surge_info = f"surge={', '.join(surge_zones)}" if surge_zones else "no surge"
+                print(f"[simulator] Tick {tick}: {orders_since_log} orders (last 10s), {emitted_this_tick} emitted, queue={len(event_queue)}, {surge_info}")
+                stream_continuously._orders_since_log = 0
+
+            # Flush producer periodically
+            if order_producer and tick % 5 == 0:
+                order_producer.flush()
+            if courier_producer and tick % 5 == 0:
+                courier_producer.flush()
 
             elapsed = time.time() - tick_start
             sleep_time = max(0, 1.0 - elapsed)
             time.sleep(sleep_time)
     except KeyboardInterrupt:
-        print("\n[simulator] Stopping...")
+        print(f"\n[simulator] Stopping... {len(event_queue)} events still in queue")
     finally:
         if order_producer:
             order_producer.flush()
@@ -410,6 +599,7 @@ def main():
     parser.add_argument("--mode", choices=["batch", "stream"], default="batch")
     parser.add_argument("--order-events", type=int, default=OUTPUT.sample_order_events)
     parser.add_argument("--courier-events", type=int, default=OUTPUT.sample_courier_events)
+    parser.add_argument("--rate", type=float, default=3.0, help="Orders per second at peak demand (default: 3)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     args = parser.parse_args()
 
@@ -454,6 +644,7 @@ def main():
         else:
             print("[simulator] No EVENTHUB_ORDER_CONNECTION_STRING set, printing to stdout")
         stream_continuously(
+            orders_per_second=args.rate,
             order_producer=order_producer,
             courier_producer=courier_producer,
         )

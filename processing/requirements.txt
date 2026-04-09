@@ -1,0 +1,4 @@
+pyspark>=3.5.0
+duckdb>=0.10.0
+python-dotenv>=1.0.0
+azure-storage-blob>=12.19.0

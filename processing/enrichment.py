@@ -4,15 +4,33 @@ enrichment.py
 Loads restaurant reference data as a Spark DataFrame for broadcast joins.
 """
 
-import sys
+import importlib.util
 import os
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 
-# Add generator to path so we can import reference_data
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "generator"))
-from reference_data import RESTAURANTS
+# Load generator modules by file path to avoid config package name clash
+_GENERATOR_DIR = os.path.join(os.path.dirname(__file__), "..", "generator")
+
+
+def _load_module(name, filepath):
+    spec = importlib.util.spec_from_file_location(name, filepath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Load generator config first (reference_data depends on it)
+_gen_config = _load_module("gen_config", os.path.join(_GENERATOR_DIR, "config.py"))
+import sys
+sys.modules["config"] = _gen_config  # so reference_data's "from config import ..." works
+
+_ref_data = _load_module("reference_data", os.path.join(_GENERATOR_DIR, "reference_data.py"))
+RESTAURANTS = _ref_data.RESTAURANTS
+
+# Restore: remove the fake "config" entry so it doesn't break our real config package
+del sys.modules["config"]
 
 
 RESTAURANT_REF_SCHEMA = StructType([
