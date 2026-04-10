@@ -50,16 +50,29 @@ class Courier:
 
 
 _FIRST_NAMES = [
-    "Alex", "Jordan", "Sam", "Taylor", "Morgan", "Casey", "Riley", "Jamie",
-    "Drew", "Skyler", "Avery", "Quinn", "Blake", "Cameron", "Dakota", "Emery"
+    "Carlos", "Lucia", "Pablo", "Maria", "Javier", "Ana", "Diego", "Elena",
+    "Alejandro", "Sofia", "Miguel", "Carmen", "Daniel", "Laura", "Sergio", "Marta"
 ]
 _LAST_NAMES = [
-    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
-    "Davis", "Wilson", "Moore", "Anderson", "Thomas", "Jackson", "White"
+    "Garcia", "Rodriguez", "Martinez", "Lopez", "Gonzalez", "Hernandez", "Fernandez",
+    "Sanchez", "Perez", "Gomez", "Moreno", "Ruiz", "Jimenez", "Diaz"
 ]
+_RESTAURANT_NAMES_BY_CUISINE = {
+    "SPANISH":        ["Casa", "Taberna", "Mesón", "Bodega", "Tasca", "Rincón", "Bar"],
+    "ITALIAN":        ["Trattoria", "Pizzeria", "Osteria", "Ristorante", "Bella", "La Dolce"],
+    "JAPANESE":       ["Sakura", "Hanami", "Koi", "Zen", "Mizu", "Nori", "Tanuki"],
+    "AMERICAN":       ["Big", "Lucky", "Star", "Golden", "Eagle", "Liberty", "Rocky"],
+    "MEXICAN":        ["El Ranchero", "La Cantina", "Taco", "Azteca", "Jalapeño", "Maiz"],
+    "CHINESE":        ["Dragon", "Jade", "Golden Wok", "Bamboo", "Lotus", "Ming", "Phoenix"],
+    "INDIAN":         ["Taj", "Namaste", "Saffron", "Masala", "Curry", "Bombay", "Delhi"],
+    "MIDDLE_EASTERN": ["Aladdin", "Sultan", "Habibi", "Beirut", "Falafel", "Shawarma", "Oasis"],
+    "THAI":           ["Bangkok", "Siam", "Pad Thai", "Orchid", "Mango", "Lotus", "Spice"],
+    "HEALTHY":        ["Green", "Fresh", "Vita", "Pure", "Bowl", "Leaf", "Glow"],
+    "DESSERT":        ["Sweet", "Sugar", "Choco", "Dulce", "Crème", "Helado", "Pastel"],
+}
 _RESTAURANT_SUFFIXES = [
-    "Kitchen", "House", "Corner", "Express", "Bistro", "Garden", "Hub",
-    "Place", "Spot", "Station", "Palace", "Den"
+    "Madrid", "del Sol", "de Oro", "Real", "Gourmet", "Express", "Premium",
+    "Fusión", "Original", "Artesano"
 ]
 
 VEHICLE_TYPES = ["BICYCLE", "SCOOTER", "MOTORCYCLE", "CAR", "WALKING"]
@@ -89,7 +102,7 @@ def build_restaurants() -> List[Restaurant]:
 
         r = Restaurant(
             restaurant_id=f"R{str(i+1).zfill(4)}",
-            name=f"{cuisine.capitalize()} {random.choice(_RESTAURANT_SUFFIXES)} {i+1}",
+            name=f"{random.choice(_RESTAURANT_NAMES_BY_CUISINE.get(cuisine, ['Restaurant']))} {random.choice(_RESTAURANT_SUFFIXES)}",
             zone_id=zone_id,
             cuisine_type=cuisine,
             latitude=_jitter_coord(zone["lat_center"]),

@@ -13,12 +13,18 @@ import os
 # ---------------------------------------------------------------------------
 # Zone definitions (fictional city grid)
 # ---------------------------------------------------------------------------
+# Madrid district coordinates
 ZONES: Dict[str, Dict] = {
-    "ZONE_NORTH":    {"lat_center": 48.870, "lon_center": 2.340, "demand_weight": 0.20, "restaurant_density": "high"},
-    "ZONE_SOUTH":    {"lat_center": 48.820, "lon_center": 2.340, "demand_weight": 0.15, "restaurant_density": "medium"},
-    "ZONE_EAST":     {"lat_center": 48.845, "lon_center": 2.400, "demand_weight": 0.25, "restaurant_density": "high"},
-    "ZONE_WEST":     {"lat_center": 48.845, "lon_center": 2.280, "demand_weight": 0.10, "restaurant_density": "low"},
-    "ZONE_CENTRAL":  {"lat_center": 48.855, "lon_center": 2.345, "demand_weight": 0.30, "restaurant_density": "very_high"},
+    "CENTRO":      {"lat_center": 40.4168, "lon_center": -3.7038, "demand_weight": 0.18, "restaurant_density": "very_high", "district": "Centro"},
+    "SALAMANCA":   {"lat_center": 40.4310, "lon_center": -3.6830, "demand_weight": 0.14, "restaurant_density": "high",      "district": "Salamanca"},
+    "CHAMBERI":    {"lat_center": 40.4350, "lon_center": -3.7050, "demand_weight": 0.12, "restaurant_density": "high",      "district": "Chamberí"},
+    "RETIRO":      {"lat_center": 40.4100, "lon_center": -3.6770, "demand_weight": 0.10, "restaurant_density": "medium",    "district": "Retiro"},
+    "LATINA":      {"lat_center": 40.4023, "lon_center": -3.7150, "demand_weight": 0.08, "restaurant_density": "medium",    "district": "Latina"},
+    "MONCLOA":     {"lat_center": 40.4350, "lon_center": -3.7200, "demand_weight": 0.07, "restaurant_density": "low",       "district": "Moncloa-Aravaca"},
+    "TETUAN":      {"lat_center": 40.4600, "lon_center": -3.6970, "demand_weight": 0.09, "restaurant_density": "high",      "district": "Tetuán"},
+    "ARGANZUELA":  {"lat_center": 40.3950, "lon_center": -3.6950, "demand_weight": 0.08, "restaurant_density": "medium",    "district": "Arganzuela"},
+    "CHAMARTIN":   {"lat_center": 40.4620, "lon_center": -3.6770, "demand_weight": 0.07, "restaurant_density": "medium",    "district": "Chamartín"},
+    "MALASANA":    {"lat_center": 40.4260, "lon_center": -3.7060, "demand_weight": 0.07, "restaurant_density": "very_high", "district": "Malasaña"},
 }
 
 ZONE_IDS = list(ZONES.keys())
@@ -28,10 +34,10 @@ ZONE_WEIGHTS = [z["demand_weight"] for z in ZONES.values()]
 # ---------------------------------------------------------------------------
 # Restaurant pool
 # ---------------------------------------------------------------------------
-CUISINE_TYPES = ["PIZZA", "SUSHI", "BURGER", "INDIAN", "THAI", "MEXICAN", "SALAD", "RAMEN"]
+CUISINE_TYPES = ["SPANISH", "ITALIAN", "JAPANESE", "AMERICAN", "MEXICAN", "CHINESE", "INDIAN", "MIDDLE_EASTERN", "THAI", "HEALTHY", "DESSERT"]
 
-RESTAURANT_COUNT = int(os.getenv("RESTAURANT_COUNT", "50"))
-COURIER_COUNT    = int(os.getenv("COURIER_COUNT", "80"))
+RESTAURANT_COUNT = int(os.getenv("RESTAURANT_COUNT", "150"))
+COURIER_COUNT    = int(os.getenv("COURIER_COUNT", "120"))
 
 
 # ---------------------------------------------------------------------------
@@ -58,26 +64,32 @@ BASE_ORDERS_PER_SECOND = float(os.getenv("BASE_ORDERS_PER_SECOND", "2.0"))
 # ---------------------------------------------------------------------------
 ORDER_VALUE_PARAMS: Dict[str, Tuple[float, float]] = {
     # (mean_eur, std_eur)
-    "PIZZA":   (18.5, 5.0),
-    "SUSHI":   (35.0, 10.0),
-    "BURGER":  (14.0, 4.0),
-    "INDIAN":  (22.0, 6.0),
-    "THAI":    (20.0, 5.5),
-    "MEXICAN": (16.0, 4.5),
-    "SALAD":   (12.0, 3.0),
-    "RAMEN":   (17.5, 4.0),
+    "SPANISH":        (24.0, 7.0),
+    "ITALIAN":        (19.0, 5.0),
+    "JAPANESE":       (32.0, 9.0),
+    "AMERICAN":       (15.0, 4.0),
+    "MEXICAN":        (16.0, 4.5),
+    "CHINESE":        (14.0, 4.0),
+    "INDIAN":         (20.0, 5.5),
+    "MIDDLE_EASTERN": (13.0, 3.5),
+    "THAI":           (18.0, 5.0),
+    "HEALTHY":        (12.0, 3.0),
+    "DESSERT":        (9.0, 3.0),
 }
 
 # Prep time distributions (mean_minutes, std_minutes) by cuisine
 PREP_TIME_PARAMS: Dict[str, Tuple[float, float]] = {
-    "PIZZA":   (18, 4),
-    "SUSHI":   (25, 6),
-    "BURGER":  (12, 3),
-    "INDIAN":  (22, 5),
-    "THAI":    (20, 5),
-    "MEXICAN": (15, 4),
-    "SALAD":   (8,  2),
-    "RAMEN":   (16, 4),
+    "SPANISH":        (22, 6),
+    "ITALIAN":        (18, 4),
+    "JAPANESE":       (25, 6),
+    "AMERICAN":       (12, 3),
+    "MEXICAN":        (15, 4),
+    "CHINESE":        (14, 3),
+    "INDIAN":         (22, 5),
+    "MIDDLE_EASTERN": (12, 3),
+    "THAI":           (20, 5),
+    "HEALTHY":        (8,  2),
+    "DESSERT":        (10, 3),
 }
 
 # Delivery time params (mean_minutes, std_minutes) 
@@ -133,14 +145,34 @@ class EdgeCaseConfig:
 @dataclass
 class SurgeConfig:
     enabled: bool = os.getenv("SURGE_ENABLED", "true").lower() == "true"
-    # Zone that will experience surge
-    surge_zone: str = os.getenv("SURGE_ZONE", "ZONE_CENTRAL")
-    # Multiplier applied to demand_weight during surge
-    surge_multiplier: float = float(os.getenv("SURGE_MULTIPLIER", "3.0"))
-    # Duration of surge in seconds
-    surge_duration_seconds: int = int(os.getenv("SURGE_DURATION_SECONDS", "120"))
-    # After how many seconds from start to trigger surge
-    surge_trigger_seconds: int = int(os.getenv("SURGE_TRIGGER_SECONDS", "60"))
+    # How often a new surge can trigger (seconds between surges)
+    min_interval_seconds: int = int(os.getenv("SURGE_MIN_INTERVAL", "600"))   # 10 min
+    max_interval_seconds: int = int(os.getenv("SURGE_MAX_INTERVAL", "1200"))  # 20 min
+    # Duration range for each surge (seconds)
+    min_duration_seconds: int = int(os.getenv("SURGE_MIN_DURATION", "60"))    # 1 min
+    max_duration_seconds: int = int(os.getenv("SURGE_MAX_DURATION", "300"))   # 5 min
+    # Multiplier range
+    min_multiplier: float = float(os.getenv("SURGE_MIN_MULTIPLIER", "1.5"))
+    max_multiplier: float = float(os.getenv("SURGE_MAX_MULTIPLIER", "4.0"))
+    # Max zones affected per surge (1 to 3)
+    max_zones_per_surge: int = int(os.getenv("SURGE_MAX_ZONES", "3"))
+
+    # Adjacent zone mapping for multi-zone surges (zones that are geographically close)
+    ADJACENT_ZONES: Dict = None
+
+    def __post_init__(self):
+        self.ADJACENT_ZONES = {
+            "CENTRO":     ["MALASANA", "LATINA", "ARGANZUELA", "SALAMANCA"],
+            "SALAMANCA":  ["CENTRO", "RETIRO", "CHAMARTIN", "CHAMBERI"],
+            "CHAMBERI":   ["MALASANA", "TETUAN", "MONCLOA", "CENTRO"],
+            "RETIRO":     ["SALAMANCA", "ARGANZUELA", "CENTRO"],
+            "LATINA":     ["CENTRO", "ARGANZUELA", "MONCLOA"],
+            "MONCLOA":    ["CHAMBERI", "LATINA", "CENTRO"],
+            "TETUAN":     ["CHAMBERI", "CHAMARTIN", "MALASANA"],
+            "ARGANZUELA": ["CENTRO", "LATINA", "RETIRO"],
+            "CHAMARTIN":  ["TETUAN", "SALAMANCA", "CHAMBERI"],
+            "MALASANA":   ["CENTRO", "CHAMBERI", "TETUAN"],
+        }
 
 
 # ---------------------------------------------------------------------------

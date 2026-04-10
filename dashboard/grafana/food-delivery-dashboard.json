@@ -1,0 +1,1344 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": null,
+    "title": "Food Delivery - Real-Time Stream Analytics",
+    "tags": [
+      "streaming",
+      "food-delivery",
+      "real-time"
+    ],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "zone",
+          "type": "query",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "cfilvx0sixm2of"
+          },
+          "query": "SELECT DISTINCT zone_id FROM windowed_kpis ORDER BY zone_id",
+          "includeAll": true,
+          "multi": true,
+          "allValue": "",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "refresh": 2
+        }
+      ]
+    },
+    "annotations": {
+      "list": []
+    },
+    "panels": [
+      {
+        "type": "row",
+        "title": "Live KPIs",
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "collapsed": false
+      },
+      {
+        "type": "stat",
+        "title": "Total Orders (Last 5 min)",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 0,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT COALESCE(SUM(order_count), 0) AS \"Orders\" FROM windowed_kpis WHERE window_type = 'tumbling_5min' AND window_start >= NOW() - INTERVAL '5 minutes' AND zone_id ~ '^${zone:regex}$'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 50
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 100
+                }
+              ]
+            },
+            "unit": "short"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Revenue (Last 5 min)",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 4,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT COALESCE(SUM(total_revenue), 0) AS \"Revenue\" FROM windowed_kpis WHERE window_type = 'tumbling_5min' AND window_start >= NOW() - INTERVAL '5 minutes' AND zone_id ~ '^${zone:regex}$'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "currencyEUR"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Avg Prep Time",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 8,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT ROUND(AVG(avg_prep_minutes)::numeric, 1) AS \"Prep (min)\" FROM windowed_kpis WHERE window_type = 'tumbling_5min' AND avg_prep_minutes IS NOT NULL AND window_start >= NOW() - INTERVAL '15 minutes' AND zone_id ~ '^${zone:regex}$'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 20
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 30
+                }
+              ]
+            },
+            "unit": "min"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Cancellation Rate",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 12,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT ROUND(AVG(cancellation_rate)::numeric * 100, 1) AS \"Cancel %\" FROM windowed_kpis WHERE window_type = 'hopping_15min_5slide' AND window_start >= NOW() - INTERVAL '15 minutes' AND zone_id ~ '^${zone:regex}$'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 10
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 20
+                }
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "SLA Breaches",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 16,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT COUNT(*) AS \"Breaches\" FROM restaurant_sla WHERE sla_breached = true AND window_start >= NOW() - INTERVAL '30 minutes' AND zone_id ~ '^${zone:regex}$'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 3
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 10
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Fraud Alerts",
+        "gridPos": {
+          "h": 4,
+          "w": 4,
+          "x": 20,
+          "y": 1
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT COUNT(*) AS \"Alerts\" FROM fraud_alerts WHERE window_start >= NOW() - INTERVAL '1 hour'",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 1
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 5
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        }
+      },
+      {
+        "type": "geomap",
+        "title": "Live Courier Map - Madrid",
+        "gridPos": {
+          "h": 12,
+          "w": 24,
+          "x": 0,
+          "y": 5
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT courier_id, zone_id, latitude, longitude, speed_kmh, status, vehicle_type, updated_at FROM courier_positions WHERE updated_at >= NOW() - INTERVAL '5 minutes' ORDER BY zone_id",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {}
+        },
+        "options": {
+          "view": {
+            "id": "coords",
+            "lat": 40.42,
+            "lon": -3.7025,
+            "zoom": 13
+          },
+          "layers": [
+            {
+              "type": "markers",
+              "name": "Couriers",
+              "config": {
+                "showLegend": true,
+                "style": {
+                  "size": {
+                    "fixed": 6,
+                    "min": 4,
+                    "max": 12,
+                    "field": "speed_kmh"
+                  },
+                  "color": {
+                    "field": "status",
+                    "fixed": "green"
+                  },
+                  "symbol": {
+                    "mode": "fixed",
+                    "fixed": "img/icons/marker/circle.svg"
+                  },
+                  "opacity": 0.8
+                }
+              },
+              "location": {
+                "mode": "coords",
+                "latitude": "latitude",
+                "longitude": "longitude"
+              }
+            }
+          ],
+          "tooltip": {
+            "mode": "details"
+          },
+          "controls": {
+            "mouseWheelZoom": true,
+            "showZoom": true
+          },
+          "basemap": {
+            "type": "default",
+            "name": "OpenStreetMap"
+          }
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Orders per 5-min Window by Zone",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 29
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, zone_id AS metric, order_count AS value FROM windowed_kpis WHERE window_type = 'tumbling_5min' AND $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars",
+              "fillOpacity": 80,
+              "stacking": {
+                "mode": "normal"
+              },
+              "lineWidth": 0,
+              "pointSize": 5
+            },
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "sum",
+              "mean"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Revenue per 5-min Window by Zone",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 5
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, zone_id AS metric, total_revenue AS value FROM windowed_kpis WHERE window_type = 'tumbling_5min' AND $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "fillOpacity": 20,
+              "lineWidth": 2,
+              "pointSize": 4,
+              "spanNulls": true
+            },
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "currencyEUR"
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "sum",
+              "mean"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Cancellation Rate by Zone (15-min Hopping Window)",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 25
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, zone_id AS metric, cancellation_rate * 100 AS value FROM windowed_kpis WHERE window_type = 'hopping_15min_5slide' AND $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "lineWidth": 2,
+              "pointSize": 4,
+              "spanNulls": true,
+              "thresholdsStyle": {
+                "mode": "area"
+              }
+            },
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "transparent",
+                  "value": null
+                },
+                {
+                  "color": "rgba(255, 152, 48, 0.1)",
+                  "value": 10
+                },
+                {
+                  "color": "rgba(242, 73, 92, 0.1)",
+                  "value": 20
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "barchart",
+        "title": "Current Cancellation Rate by Zone",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 25
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT zone_id, ROUND((AVG(cancellation_rate) * 100)::numeric, 1) AS cancel_rate FROM windowed_kpis WHERE window_type = 'hopping_15min_5slide' AND window_start = (SELECT MAX(window_start) FROM windowed_kpis WHERE window_type = 'hopping_15min_5slide') GROUP BY zone_id ORDER BY cancel_rate DESC",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 10
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 20
+                }
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "xTickLabelRotation": 0,
+          "showValue": "always",
+          "barWidth": 0.7
+        }
+      },
+      {
+        "type": "row",
+        "title": "Demand-Supply Health",
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 33
+        },
+        "collapsed": false
+      },
+      {
+        "type": "gauge",
+        "title": "Zone Health Ratio (Current)",
+        "gridPos": {
+          "h": 8,
+          "w": 10,
+          "x": 0,
+          "y": 34
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT zone_id AS metric, health_ratio AS value FROM demand_supply_health WHERE window_start = (SELECT MAX(window_start) FROM demand_supply_health) AND zone_id ~ '^${zone:regex}$' ORDER BY zone_id",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 2
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 4
+                }
+              ]
+            },
+            "min": 0,
+            "max": 6
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Health Ratio Over Time",
+        "gridPos": {
+          "h": 8,
+          "w": 14,
+          "x": 10,
+          "y": 34
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, zone_id AS metric, health_ratio AS value FROM demand_supply_health WHERE $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "fillOpacity": 15,
+              "lineWidth": 2,
+              "pointSize": 3,
+              "spanNulls": true,
+              "thresholdsStyle": {
+                "mode": "dashed"
+              }
+            },
+            "color": {
+              "mode": "palette-classic"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "orange",
+                  "value": 2
+                },
+                {
+                  "color": "red",
+                  "value": 4
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "mean",
+              "max",
+              "last"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "table",
+        "title": "Demand vs Supply Detail",
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 42
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start, zone_id, pending_demand, available_supply, ROUND(health_ratio::numeric, 2) AS health_ratio, health_status FROM demand_supply_health WHERE window_start >= NOW() - INTERVAL '30 minutes' AND zone_id ~ '^${zone:regex}$' ORDER BY window_start DESC, zone_id",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "health_status"
+              },
+              "properties": [
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-background",
+                    "mode": "basic"
+                  }
+                },
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "healthy": {
+                          "color": "#73BF69",
+                          "text": "HEALTHY"
+                        }
+                      }
+                    },
+                    {
+                      "type": "value",
+                      "options": {
+                        "moderate": {
+                          "color": "#FF9830",
+                          "text": "MODERATE"
+                        }
+                      }
+                    },
+                    {
+                      "type": "value",
+                      "options": {
+                        "stressed": {
+                          "color": "#F2495C",
+                          "text": "STRESSED"
+                        }
+                      }
+                    },
+                    {
+                      "type": "value",
+                      "options": {
+                        "critical": {
+                          "color": "#C4162A",
+                          "text": "CRITICAL"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "window_start",
+              "desc": true
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "title": "Restaurant SLA Monitoring",
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 50
+        },
+        "collapsed": false
+      },
+      {
+        "type": "table",
+        "title": "Restaurant Prep Time Percentiles (Latest Window)",
+        "gridPos": {
+          "h": 10,
+          "w": 16,
+          "x": 0,
+          "y": 51
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT restaurant_name, zone_id, cuisine, sla_tier, order_count, ROUND(p50_prep::numeric, 1) AS p50, ROUND(p95_prep::numeric, 1) AS p95, ROUND(p99_prep::numeric, 1) AS p99, CASE WHEN sla_breached THEN 'BREACHED' ELSE 'OK' END AS sla_status FROM restaurant_sla WHERE window_start = (SELECT MAX(window_start) FROM restaurant_sla) AND zone_id ~ '^${zone:regex}$' ORDER BY p95_prep DESC",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "sla_status"
+              },
+              "properties": [
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-background",
+                    "mode": "basic"
+                  }
+                },
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "OK": {
+                          "color": "#73BF69",
+                          "text": "OK"
+                        }
+                      }
+                    },
+                    {
+                      "type": "value",
+                      "options": {
+                        "BREACHED": {
+                          "color": "#F2495C",
+                          "text": "BREACHED"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "p95"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "thresholds"
+                  }
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {
+                        "color": "#73BF69",
+                        "value": null
+                      },
+                      {
+                        "color": "#FF9830",
+                        "value": 15
+                      },
+                      {
+                        "color": "#F2495C",
+                        "value": 25
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-background",
+                    "mode": "basic"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "p95",
+              "desc": true
+            }
+          ]
+        }
+      },
+      {
+        "type": "barchart",
+        "title": "Top Restaurants by p95 Prep Time",
+        "gridPos": {
+          "h": 10,
+          "w": 8,
+          "x": 16,
+          "y": 51
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT restaurant_name AS metric, ROUND(p95_prep::numeric, 1) AS p95 FROM restaurant_sla WHERE window_start = (SELECT MAX(window_start) FROM restaurant_sla) AND zone_id ~ '^${zone:regex}$' ORDER BY p95_prep DESC LIMIT 15",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "#73BF69",
+                  "value": null
+                },
+                {
+                  "color": "#FF9830",
+                  "value": 15
+                },
+                {
+                  "color": "#F2495C",
+                  "value": 25
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "xTickLabelRotation": 0,
+          "showValue": "always",
+          "barWidth": 0.7
+        }
+      },
+      {
+        "type": "row",
+        "title": "Anomaly Detection & Late Data",
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 61
+        },
+        "collapsed": false
+      },
+      {
+        "type": "timeseries",
+        "title": "Delivery Time: Mean vs Anomaly Threshold (30-min Sliding Window)",
+        "gridPos": {
+          "h": 8,
+          "w": 16,
+          "x": 0,
+          "y": 62
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, zone_id || ' mean' AS metric, mean_delivery_min AS value FROM delivery_anomalies WHERE $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          },
+          {
+            "rawSql": "SELECT window_start AS time, zone_id || ' threshold' AS metric, anomaly_threshold AS value FROM delivery_anomalies WHERE $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' ORDER BY window_start",
+            "format": "time_series",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "fillOpacity": 0,
+              "lineWidth": 2,
+              "pointSize": 3,
+              "spanNulls": true
+            },
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "min"
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byRegexp",
+                "options": "threshold"
+              },
+              "properties": [
+                {
+                  "id": "custom.lineStyle",
+                  "value": {
+                    "fill": "dash",
+                    "dash": [
+                      10,
+                      10
+                    ]
+                  }
+                },
+                {
+                  "id": "custom.fillOpacity",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "timeseries",
+        "title": "Anomaly Count & Late Events per Window",
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 62
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start AS time, 'Anomalies' AS metric, SUM(anomaly_count) AS value FROM delivery_anomalies WHERE $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' GROUP BY window_start ORDER BY window_start",
+            "format": "time_series",
+            "refId": "A"
+          },
+          {
+            "rawSql": "SELECT window_start AS time, 'Late Events' AS metric, SUM(late_event_count) AS value FROM delivery_anomalies WHERE $__timeFilter(window_start) AND zone_id ~ '^${zone:regex}$' GROUP BY window_start ORDER BY window_start",
+            "format": "time_series",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars",
+              "fillOpacity": 70,
+              "lineWidth": 0,
+              "stacking": {
+                "mode": "normal"
+              }
+            },
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Anomalies"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "fixedColor": "#F2495C",
+                    "mode": "fixed"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Late Events"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "fixedColor": "#FF9830",
+                    "mode": "fixed"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        }
+      },
+      {
+        "type": "row",
+        "title": "Fraud Detection",
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 70
+        },
+        "collapsed": false
+      },
+      {
+        "type": "table",
+        "title": "Fraud Alerts (Last Hour)",
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 71
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "cfilvx0sixm2of"
+        },
+        "targets": [
+          {
+            "rawSql": "SELECT window_start, device_id, distinct_customer_ids, cancellation_count, refund_count, ROUND(total_order_value::numeric, 2) AS total_value_eur, fraud_flags FROM fraud_alerts WHERE window_start >= NOW() - INTERVAL '2 hours' ORDER BY window_start DESC LIMIT 50",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "fraud_flags"
+              },
+              "properties": [
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-background",
+                    "mode": "basic"
+                  }
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "fixedColor": "#F2495C",
+                    "mode": "fixed"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "cancellation_count"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "thresholds"
+                  }
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {
+                        "color": "transparent",
+                        "value": null
+                      },
+                      {
+                        "color": "#FF9830",
+                        "value": 3
+                      },
+                      {
+                        "color": "#F2495C",
+                        "value": 5
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "custom.cellOptions",
+                  "value": {
+                    "type": "color-background",
+                    "mode": "basic"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "window_start",
+              "desc": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}
