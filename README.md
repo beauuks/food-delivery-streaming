@@ -1,6 +1,6 @@
 # Real-Time Food Delivery Streaming Analytics
 
-> **Course Project – Milestone 1: Streaming Data Feed Design & Generation**
+> **Course Project – Milestones 1 & 2: Stream Analytics Pipeline**
 > Stream Analytics | Academic Year 2025/26
 
 ---
@@ -17,21 +17,29 @@
 5. [Schema Design](#schema-design)
 6. [Data Generator](#data-generator)
 7. [Realism & Edge Cases](#realism--edge-cases)
-8. [Repository Structure](#repository-structure)
-9. [Quick Start](#quick-start)
-10. [Planned Analytics (Milestone 2)](#planned-analytics-milestone-2)
+8. [Milestone 2: Stream Analytics Pipeline](#milestone-2-stream-analytics-pipeline)
+9. [Repository Structure](#repository-structure)
+10. [Quick Start (Milestone 1)](#quick-start-milestone-1)
+11. [Running the Full Pipeline (Milestone 2)](#running-the-full-pipeline-milestone-2)
 
 ---
 
 ## Project Overview
 
-This project implements a **real-time analytics pipeline** for a food delivery platform (analogous to Uber Eats, Glovo, or Deliveroo). The platform operates as a real-time marketplace connecting customers, restaurants, and couriers — generating high-volume streaming data that must be processed, stored, and visualised with minimal latency.
+This project implements a **real-time analytics pipeline** for a food delivery platform (analogous to Uber Eats, Glovo, or Deliveroo) operating across 10 districts of Madrid. The platform connects customers, restaurants, and couriers — generating high-volume streaming data that must be processed, stored, and visualised with minimal latency.
 
 **Milestone 1** delivers:
 - Two streaming data feeds with full AVRO schemas
-- A Python event generator supporting realistic distributions, configurable parameters, and a comprehensive suite of streaming edge cases
+- A Python event generator with realistic distributions, configurable parameters, and comprehensive streaming edge cases
 - Sample data in both JSON and AVRO formats
-- A design document justifying all architectural choices with respect to planned analytics
+- A design document justifying architectural choices
+
+**Milestone 2** delivers:
+- Live ingestion into Azure Event Hubs with an event queue for realistic lifecycle timing
+- Spark Structured Streaming processing with 5 analytical use cases (basic → advanced)
+- Aggregated metrics persisted to Supabase Postgres
+- Raw event Parquet storage on local disk + Azure Blob via Stream Analytics
+- A live Grafana dashboard featuring a Madrid geomap of couriers, KPIs, SLA monitoring, anomaly detection, and fraud alerts
 
 ---
 
@@ -53,31 +61,35 @@ This project implements a **real-time analytics pipeline** for a food delivery p
 
 ```mermaid
 flowchart TD
-    subgraph M1 ["MILESTONE 1"]
-        subgraph Sim ["Python Simulator"]
-            DM["Demand Model<br/>(temporal)"]
-            RD["Reference Data<br/>(entities)"]
-            ECI["Edge Case Injector<br/>(late/dup/fraud)"]
-            
-            EF["Event Factories<br/>(order_sequence, courier_event)"]
-            
-            DM --> EF
-            RD --> EF
-            ECI --> EF
-            
-            JSON["JSON files<br/>(sample)"]
-            AVRO["AVRO files<br/>(sample)"]
-            KAFKA["Kafka/EH<br/>(stream)"]
-            
-            EF --> JSON
-            EF --> AVRO
-            EF --> KAFKA
-        end
+    subgraph M1 ["MILESTONE 1: Generator"]
+        DM["Demand Model (temporal + surge)"]
+        RD["Reference Data (Madrid zones + 150 restaurants + 120 couriers)"]
+        EQ["Event Queue (deferred realistic timing)"]
+        ECI["Edge Case Injector (late, duplicate, fraud)"]
+        EF["Event Factories"]
+
+        DM --> EF
+        RD --> EF
+        ECI --> EF
+        EF --> EQ
     end
 
-    M2["MILESTONE 2 (Upcoming)<br/>Azure Event Hubs<br/>&rarr; Spark Streaming<br/>&rarr; Parquet (Blob) + Dashboard"]
+    subgraph M2 ["MILESTONE 2: Stream Analytics"]
+        EH["Azure Event Hubs (2 topics, 4 partitions)"]
+        ASA["Azure Stream Analytics Job"]
+        SPARK["Spark Structured Streaming (local, Kafka protocol)"]
+        BLOB["Azure Blob Storage (Parquet)"]
+        PG["Supabase Postgres (aggregated metrics)"]
+        GRAF["Grafana Dashboard (live map + 20 panels)"]
+        LOCAL["Local Parquet (raw events)"]
 
-    M1 --> M2
+        EH --> ASA --> BLOB
+        EH --> SPARK
+        SPARK --> LOCAL
+        SPARK --> PG --> GRAF
+    end
+
+    EQ --> EH
 ```
 
 ---
@@ -86,7 +98,7 @@ flowchart TD
 
 ### Feed 1: Order Lifecycle Events
 
-**Topic:** `order-lifecycle-events`  
+**Topic:** `group_6_orders`
 **Schema:** `schemas/order_lifecycle_event.avsc`
 
 An **Order Lifecycle Event** is emitted every time an order transitions between states. Rather than emitting a single "completed order" record, we use the **event-sourcing pattern**: each state transition is its own immutable event. This is fundamental to streaming analytics because:
@@ -99,7 +111,6 @@ An **Order Lifecycle Event** is emitted every time an order transitions between 
 
 ```mermaid
 flowchart LR
-    %% Style definitions
     classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
     classDef exception fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
 
@@ -132,21 +143,20 @@ flowchart LR
 
 ### Feed 2: Courier Status Events
 
-**Topic:** `courier-status-events`  
+**Topic:** `group_6_couriers`
 **Schema:** `schemas/courier_status_event.avsc`
 
 A **Courier Status Event** is emitted when a courier's state changes (assignment, movement milestone, going offline) or on a **periodic heartbeat** to maintain availability presence. This feed is essential because:
 
 1. It powers **supply-side analytics** — how many couriers are available per zone at any moment.
 2. It enables **session window analytics** — a courier's "active session" (online → offline) is a natural session boundary.
-3. It provides the **location stream** needed for zone-level demand-supply balance.
+3. It provides the **location stream** needed for zone-level demand-supply balance and the live Grafana map.
 4. It enables detection of **mid-delivery drops** (courier goes offline while carrying an order).
 
 **State Machine:**
 
 ```mermaid
 flowchart LR
-    %% Style definitions for the nodes
     classDef default fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
 
     OFFLINE --> ONLINE_IDLE
@@ -155,55 +165,20 @@ flowchart LR
     HEADING_TO_RESTAURANT --> AT_RESTAURANT
     AT_RESTAURANT --> HEADING_TO_CUSTOMER
     HEADING_TO_CUSTOMER --> COMPLETED_DELIVERY
-    
+
     COMPLETED_DELIVERY --> ONLINE_IDLE
     COMPLETED_DELIVERY --> OFFLINE
 ```
-
-**Key fields for analytics:**
-
-| Field | Purpose |
-|-------|---------|
-| `event_time` | Actual timestamp — watermark anchor |
-| `courier_id` | Join key with order feed |
-| `zone_id` | Supply-side zone counting |
-| `status` | State machine node — session boundary detection |
-| `active_session_id` | Groups events into a courier session |
-| `session_start_time` | Session window start time |
-| `latitude` / `longitude` | Geo-analytics, zone transitions |
-| `speed_kmh` | Anomaly detection (impossible speeds) |
-| `battery_pct` | Predictive offline event signal |
-| `is_heartbeat` | Distinguish state changes from presence pings |
-| `offline_reason` | Mid-delivery drop analysis |
 
 ---
 
 ### Design Justification
 
-**Why these two feeds?**
+**Why two feeds?** Separating order lifecycle (demand) from courier status (supply) enables clean stream-to-stream joins for zone health analytics and avoids conflating fundamentally different signals.
 
-The food delivery platform has three actors: customers, restaurants, and couriers. A single "order" feed would conflate demand-side and supply-side signals, making windowed aggregations messy and unscalable. By separating:
+**Why event-sourcing?** Emitting every state transition gives full temporal fidelity — we can detect SLA breaches, measure pending demand at any point in time, and track real-time throughput. A snapshot model would discard this information.
 
-- **Order Lifecycle** (demand side): we isolate customer demand patterns, restaurant SLAs, and payment/fraud signals.
-- **Courier Status** (supply side): we isolate courier availability, movement, and session behaviour.
-
-This separation enables clean **stream-table joins** in Milestone 2 (e.g., joining order events with current courier availability counts to compute demand-supply gap per zone).
-
-**Why event-sourcing (not snapshots)?**
-
-A snapshot model (emit one record per completed order) would discard the timing of intermediate steps. We would lose the ability to:
-- Detect that a restaurant took 35 minutes to prepare (SLA breach)
-- Observe that an order had been in READY_FOR_PICKUP for 20 minutes with no courier (supply gap)
-- Track real-time throughput (how many orders placed per minute)
-
-Event-sourcing gives us **full temporal fidelity**, which is the prerequisite for meaningful streaming analytics.
-
-**Why AVRO?**
-
-- **Schema enforcement** prevents malformed events from silently corrupting aggregations.
-- **Schema evolution** via versioning (`schema_version` field + namespace) allows adding fields without breaking existing consumers.
-- **Binary compactness** reduces Event Hubs costs vs JSON at high throughput.
-- **Logical types** (timestamp-millis) make event-time handling unambiguous across languages.
+**Why AVRO?** Schema enforcement, evolution, binary compactness, and unambiguous logical timestamp types across languages.
 
 ---
 
@@ -235,7 +210,8 @@ generator/
 ├── reference_data.py   # Restaurant and Courier entity generation
 ├── event_factories.py  # Pure event construction functions
 ├── avro_utils.py       # AVRO serialisation layer
-└── simulator.py        # Orchestration, demand model, CLI
+├── eventhub_producer.py# Azure Event Hubs producer wrapper
+└── simulator.py        # Orchestration, demand model, event queue, CLI
 ```
 
 ### Demand Model
@@ -244,38 +220,53 @@ The temporal demand model uses a **24-hour hourly multiplier array** calibrated 
 
 - **Lunch peak:** 12:00–14:00 (multiplier ~1.0)
 - **Dinner peak:** 19:00–21:00 (multiplier ~1.0)
-- **Night trough:** 02:00–05:00 (multiplier ~0.02)
+- **Night trough:** 02:00–05:00 (multiplier ~0.02, probabilistic: 0 orders possible)
 - **Weekend boost:** 1.35× applied on top of hourly multiplier
+- **Per-tick jitter:** 50%–150% random variation to avoid patterned output
 
-### Zone Model
+### Zone Model — Madrid Districts
 
-Five synthetic city zones with different demand weights and restaurant densities:
+| Zone ID | District | Demand Weight |
+|---|---|---|
+| CENTRO | Centro | 18% |
+| SALAMANCA | Salamanca | 14% |
+| CHAMBERI | Chamberí | 12% |
+| RETIRO | Retiro | 10% |
+| TETUAN | Tetuán | 9% |
+| LATINA | Latina | 8% |
+| ARGANZUELA | Arganzuela | 8% |
+| MONCLOA | Moncloa-Aravaca | 7% |
+| CHAMARTIN | Chamartín | 7% |
+| MALASANA | Malasaña | 7% |
 
-| Zone | Weight | Density |
-|------|--------|---------|
-| ZONE_CENTRAL | 30% | Very High |
-| ZONE_EAST | 25% | High |
-| ZONE_NORTH | 20% | High |
-| ZONE_SOUTH | 15% | Medium |
-| ZONE_WEST | 10% | Low |
+All zones use real Madrid latitude/longitude centres so couriers and restaurants appear correctly on the Grafana geomap.
 
-### Cuisine-specific Distributions
+### Cuisines (11 types)
 
-Each cuisine type has calibrated prep time and order value distributions (Gaussian):
+SPANISH, ITALIAN, JAPANESE, AMERICAN, MEXICAN, CHINESE, INDIAN, MIDDLE_EASTERN, THAI, HEALTHY, DESSERT — each with calibrated prep time and order value distributions and themed restaurant names (e.g., "Casa del Sol", "Trattoria Artesano", "Sakura Madrid").
 
-| Cuisine | Avg Prep (min) | Avg Value (€) |
-|---------|---------------|---------------|
-| Sushi | 25 ± 6 | €35 ± 10 |
-| Indian | 22 ± 5 | €22 ± 6 |
-| Pizza | 18 ± 4 | €18.5 ± 5 |
-| Burger | 12 ± 3 | €14 ± 4 |
-| Salad | 8 ± 2 | €12 ± 3 |
+### Event Queue (Stream Mode)
+
+In stream mode, lifecycle events are emitted at **realistic wall-clock times** via a deferred event queue:
+- **PLACED** → emitted immediately
+- **CONFIRMED** → ~30–60 s later
+- **PREPARING** → ~65 s later
+- **READY_FOR_PICKUP** → ~20 min later
+- **DELIVERED** → ~30–40 min later
+
+This ensures Spark sees a realistic stream — each micro-batch contains events from different lifecycle stages of different orders, not the entire lifecycle of one order all at once.
+
+### Dynamic Surge Manager
+
+Instead of a single fixed surge, the generator periodically triggers **random multi-zone surges**:
+- Every 10–20 minutes a new surge starts in a random primary zone + 0–2 adjacent zones
+- Random 1.5×–4× multiplier
+- Random 1–5 minute duration
+- Random reason: football match, concert ending, heavy rain, festival crowd, etc.
 
 ---
 
 ## Realism & Edge Cases
-
-The generator implements the full spectrum of edge cases required for demonstrating streaming correctness:
 
 | Edge Case | Implementation | Rate |
 |-----------|---------------|------|
@@ -285,17 +276,73 @@ The generator implements the full spectrum of edge cases required for demonstrat
 | **Impossible durations** | Delivery in <2s or >2 hours (anomaly detection) | 0.8% |
 | **Courier mid-delivery drop** | Courier OFFLINE during active delivery | 1.5% |
 | **Fraud clusters** | Group of customers sharing a device_id | 0.5% |
-| **Demand surge** | Configurable zone surge (3× multiplier for 2 minutes) | Configurable |
+| **Demand surge** | Rotating multi-zone surges, random intensity + duration | Periodic |
 | **Order cancellations** | Full cancellation with reason codes | 8% |
 | **Promo orders** | Orders with promotional codes | 20% |
 
 ### Why These Edge Cases Matter for Streaming
 
-- **Late events + watermarks:** Spark Structured Streaming requires a watermark strategy to handle late data. Our `is_late` flag allows us to measure how many events fall outside the watermark threshold and tune accordingly.
-- **Duplicates + idempotent sinks:** Without deduplication on `event_id`, windowed aggregations will overcount. Our duplicates test the effectiveness of our dedup logic.
-- **Missing steps:** Tests that our analytics don't break when expected intermediate events are absent (e.g., an order with no PICKED_UP should still count as delivered in KPI windows).
-- **Impossible durations:** Seeds our anomaly detection use case (Milestone 2, Use Case 3).
-- **Mid-delivery drops:** Tests session window closure and the demand-supply health metric (an in-flight order suddenly has no courier).
+- **Late events + watermarks:** Spark Structured Streaming requires watermarks to handle late data. Our `is_late` flag lets us measure how many events fall outside the watermark threshold and tune accordingly.
+- **Duplicates + idempotent sinks:** Without deduplication on `event_id`, windowed aggregations overcount. Our duplicates test dedup logic.
+- **Missing steps:** Tests that analytics don't break when expected intermediate events are absent.
+- **Impossible durations:** Seeds the anomaly detection use case.
+- **Mid-delivery drops:** Tests the demand-supply health metric.
+
+---
+
+## Milestone 2: Stream Analytics Pipeline
+
+### Pipeline
+
+```
+Generator (event queue)
+  └─► Azure Event Hubs (2 topics, 4 partitions each, zone_id partition key)
+        ├─► Azure Stream Analytics Job → Blob Storage (Parquet)
+        └─► Spark Structured Streaming (local PySpark, Kafka protocol)
+              ├─► Raw Parquet → local ./data/output/
+              └─► Supabase Postgres (accumulative upserts)
+                    └─► Grafana Dashboard (live map + 20 panels)
+```
+
+### Stream Processing (Spark Structured Streaming)
+
+- **Runtime:** Local PySpark 4.1.1 (Scala 2.13), `spark-sql-kafka-0-10` connector, `spark.sql.session.timeZone=UTC`
+- **Input:** Two Kafka sources reading from the Event Hubs Kafka-compatible endpoint
+- **Processing:** Consolidated `foreachBatch` handlers (one per stream) to avoid py4j channel exhaustion
+- **Output:**
+  - Supabase Postgres via accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) so windows build correctly across batches
+  - Local Parquet partitioned by year/month/day/hour
+
+### Use Cases Implemented
+
+| # | Level | Use Case | Window | Output Table |
+|---|---|---|---|---|
+| 1a | Basic | Order count, revenue, avg prep time per zone | 5-min tumbling | `windowed_kpis` |
+| 1b | Basic | Cancellation rate per zone | 15-min hopping (5-min slide) | `windowed_kpis` |
+| 2a | Intermediate | Demand-supply health ratio per zone | 5-min tumbling (cross-stream) | `demand_supply_health` |
+| 2b | Intermediate | Restaurant SLA monitoring (p50/p95/p99 prep time, tier-based breach detection) | 15-min tumbling | `restaurant_sla` |
+| 3a | Advanced | Delivery time anomaly detection (z-score) with late event tracking | 30-min sliding (5-min slide) | `delivery_anomalies` |
+| 3b | Advanced | Fraud heuristics (device-level cancellations, account hopping) | 1-hour tumbling | `fraud_alerts` |
+| + | Live | Real-time courier positions (latest per courier) | Per batch | `courier_positions` |
+
+### Dashboard (Grafana)
+
+A single Grafana dashboard with 20+ panels powered by Supabase Postgres:
+
+- **Live KPI stat cards:** total orders, revenue, avg prep time, cancellation rate, SLA breaches, fraud alerts
+- **Live Courier Map — Madrid:** Geomap panel showing real-time courier positions with OpenStreetMap basemap, centred on Madrid (40.42°N, 3.70°W). Courier dots sized by speed.
+- **Order & Revenue Trends:** stacked bar chart for orders by zone, line chart for revenue by zone
+- **Cancellation Analysis:** time series with threshold shading + per-zone current bar chart
+- **Demand-Supply Health:** zone gauges, trend chart with threshold lines, detail table with HEALTHY/MODERATE/STRESSED/CRITICAL colour coding
+- **Restaurant SLA:** table with p50/p95/p99, breach highlighting, bar chart of worst offenders
+- **Anomaly Detection:** mean vs threshold time series (solid vs dashed), anomaly count + late event bar chart
+- **Fraud Alerts:** device-level table with fraud flags highlighted
+
+Auto-refresh every 10 seconds. Zone filtering via Grafana template variable.
+
+### Reflection & Production Readiness
+
+See `docs/milestone2_design.md` for the full reflection on streaming tradeoffs, data design decisions, and production readiness gaps.
 
 ---
 
@@ -303,32 +350,44 @@ The generator implements the full spectrum of edge cases required for demonstrat
 
 ```
 food-delivery-streaming/
-├── README.md                          
+├── README.md
+├── .env.example                       # Template for environment variables
 ├── docs/
-│   └── milestone1_design.md           # Design document
+│   ├── milestone1_design.md           # Milestone 1 design document
+│   └── milestone2_design.md           # Milestone 2 design + reflection
 ├── schemas/
-│   ├── order_lifecycle_event.avsc     # AVRO schema: order events
-│   └── courier_status_event.avsc      # AVRO schema: courier events
-├── generator/
-│   ├── README.md                      # Generator-specific docs
-│   ├── requirements.txt
-│   ├── config.py                      # All simulation parameters
-│   ├── reference_data.py              # Restaurant & courier entities
-│   ├── event_factories.py             # Event construction functions
-│   ├── avro_utils.py                  # AVRO serialisation
-│   └── simulator.py                   # Main orchestrator + CLI
-└── sample_data/
+│   ├── order_lifecycle_event.avsc
+│   └── courier_status_event.avsc
+├── generator/                         # Milestone 1 — event generator
+│   ├── simulator.py                   # Main orchestrator + event queue + surge manager
+│   ├── eventhub_producer.py           # Azure Event Hubs publishing
+│   ├── config.py                      # Madrid zones, cuisines, demand model, edge cases
+│   ├── reference_data.py              # 150 restaurants + 120 couriers
+│   ├── event_factories.py
+│   ├── avro_utils.py
+│   └── requirements.txt
+├── processing/                        # Milestone 2 — Spark Structured Streaming
+│   ├── spark_streaming.py             # Main Spark job (consolidated foreachBatch)
+│   ├── schemas.py                     # Spark StructType definitions
+│   ├── enrichment.py                  # Restaurant reference data broadcast
+│   ├── sinks/
+│   │   ├── postgres_sink.py           # Supabase Postgres upsert logic
+│   │   └── parquet_sink.py            # Local Parquet writer
+│   └── requirements.txt
+├── config/                            # Shared config modules
+│   ├── eventhub_config.py             # Kafka-compatible EH connection
+│   └── spark_config.py                # SparkSession builder (UTC)
+├── dashboard/
+│   └── grafana/
+│       └── food-delivery-dashboard.json  # Grafana dashboard definition
+└── sample_data/                       # Milestone 1 sample output
     ├── json/
-    │   ├── order_lifecycle_events.json
-    │   └── courier_status_events.json
     └── avro/
-        ├── order_lifecycle_events.avro
-        └── courier_status_events.avro
 ```
 
 ---
 
-## Quick Start
+## Quick Start (Milestone 1)
 
 ```bash
 # 1. Clone the repository
@@ -341,60 +400,152 @@ pip install -r generator/requirements.txt
 # 3. Generate sample data (batch mode)
 cd generator
 python simulator.py --mode batch --order-events 1000 --courier-events 500
-
-# 4. Stream continuously (for Milestone 2)
-python simulator.py --mode stream
-
-# 5. Customise via environment variables
-RESTAURANT_COUNT=100 COURIER_COUNT=150 SURGE_ENABLED=true \
-SURGE_ZONE=ZONE_CENTRAL SURGE_MULTIPLIER=5.0 \
-CANCELLATION_RATE=0.12 LATE_EVENT_RATE=0.10 \
-python simulator.py --mode batch
 ```
 
-**Available environment variables:**
+---
+
+## Running the Full Pipeline (Milestone 2)
+
+### Prerequisites
+
+- **Python 3.11+**, `pip`, `venv`
+- **Apache Spark 4.x** with Scala 2.13 (`brew install apache-spark`)
+- **Java 17+**
+- **Grafana** (`brew install grafana`)
+- **Azure Event Hubs** namespace with 2 event hubs (orders + couriers, 4 partitions each)
+- **Azure Storage Account** with a Blob container
+- **Supabase** project (free tier works, Postgres database)
+
+### 1. Set up environment variables
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+
+```bash
+# Azure Event Hubs (per-hub connection strings with EntityPath)
+export EVENTHUB_ORDER_CONNECTION_STRING="Endpoint=sb://<ns>.servicebus.windows.net/;SharedAccessKeyName=...;SharedAccessKey=...;EntityPath=<order-hub>"
+export EVENTHUB_COURIER_CONNECTION_STRING="Endpoint=sb://<ns>.servicebus.windows.net/;SharedAccessKeyName=...;SharedAccessKey=...;EntityPath=<courier-hub>"
+export EVENTHUB_ORDER_TOPIC=<order-hub-name>
+export EVENTHUB_COURIER_TOPIC=<courier-hub-name>
+export EVENTHUB_CONSUMER_GROUP=spark-processing
+
+# Azure Blob Storage (for Stream Analytics output)
+export AZURE_STORAGE_ACCOUNT=<account-name>
+export AZURE_STORAGE_KEY=<key>
+export AZURE_STORAGE_CONTAINER=<container-name>
+
+# Supabase Postgres (transaction pooler connection string)
+export DATABASE_URL="postgresql://postgres.<ref>:<password>@aws-1-<region>.pooler.supabase.com:6543/postgres"
+```
+
+### 2. Install Python dependencies
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r generator/requirements.txt
+pip install -r processing/requirements.txt
+# psycopg2 needs to be installed globally for spark-submit
+pip3 install psycopg2-binary --break-system-packages
+```
+
+### 3. Start the pipeline (3 terminals)
+
+**Terminal 1 — Generator:**
+```bash
+cd food-delivery-streaming
+source venv/bin/activate && source .env
+cd generator
+python3 simulator.py --mode stream --rate 3
+```
+The `--rate` flag is peak orders per second (default 3). Lifecycle events flow out of the event queue at realistic times (PLACED now, DELIVERED ~30 min later).
+
+**Terminal 2 — Spark Streaming:**
+```bash
+cd food-delivery-streaming
+source venv/bin/activate && source .env
+cd processing
+rm -rf data   # Clear checkpoints on first run or after schema changes
+spark-submit \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1 \
+  spark_streaming.py
+```
+You'll see `[orders] Batch N: X events` and `[couriers] Batch N: Y events` logs as data flows through.
+
+**Terminal 3 — Grafana:**
+```bash
+brew services start grafana
+```
+Then open `http://localhost:3000` (default login: `admin` / `admin`).
+
+### 4. Configure Grafana (first time only)
+
+1. **Add Postgres datasource:**
+   - Left sidebar → **Connections** → **Data sources** → **Add data source** → **PostgreSQL**
+   - Name: `Supabase`
+   - Host: `aws-1-<region>.pooler.supabase.com:6543`
+   - Database: `postgres`
+   - User: `postgres.<project-ref>`
+   - Password: `<your password>`
+   - TLS/SSL Mode: `require`
+   - Click **Save & test**
+
+2. **Import the dashboard:**
+   ```bash
+   # From a fourth terminal in the project root
+   curl -X POST http://admin:admin@localhost:3000/api/dashboards/db \
+     -H "Content-Type: application/json" \
+     -d @dashboard/grafana/food-delivery-dashboard.json
+   ```
+   The response includes the dashboard URL. Open it in your browser.
+
+3. If panels show "No data", verify the datasource UID matches:
+   ```bash
+   curl -s http://admin:admin@localhost:3000/api/datasources | python3 -m json.tool
+   ```
+   If your datasource UID differs from `cfilvx0sixm2of`, replace it in `dashboard/grafana/food-delivery-dashboard.json` and re-import.
+
+### 5. Let it run
+
+Leave everything running for 30+ minutes. Panels populate in this order:
+- **Immediately:** Order counts, revenue, courier positions on the map
+- **~5 min:** Demand-supply health per zone
+- **~20 min:** Restaurant SLA percentiles (needs DELIVERED events)
+- **~30 min:** Delivery anomaly detection (needs full 30-min sliding window)
+- **~1 hour:** Fraud alerts (needs 1-hour tumbling window)
+
+### 6. Stopping the pipeline
+
+- Ctrl+C in each terminal (generator, Spark)
+- `brew services stop grafana`
+
+---
+
+## Available Environment Variables
+
+Generator tunables (all optional, override via env or `.env`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RESTAURANT_COUNT` | 50 | Number of synthetic restaurants |
-| `COURIER_COUNT` | 80 | Number of synthetic couriers |
-| `BASE_ORDERS_PER_SECOND` | 2.0 | Peak throughput |
+| `RESTAURANT_COUNT` | 150 | Number of synthetic restaurants |
+| `COURIER_COUNT` | 120 | Number of synthetic couriers |
+| `BASE_ORDERS_PER_SECOND` | 2.0 | Default peak throughput (CLI `--rate` overrides) |
 | `CANCELLATION_RATE` | 0.08 | Fraction of orders cancelled |
 | `LATE_EVENT_RATE` | 0.05 | Fraction of events arriving late |
 | `DUPLICATE_RATE` | 0.02 | Fraction of events duplicated |
 | `MISSING_STEP_RATE` | 0.01 | Fraction of orders with missing lifecycle step |
-| `IMPOSSIBLE_DURATION_RATE` | 0.008 | Fraction of orders with anomalous duration |
+| `IMPOSSIBLE_DURATION_RATE` | 0.008 | Fraction with anomalous duration |
 | `COURIER_MID_DELIVERY_DROP_RATE` | 0.015 | Fraction of couriers dropping mid-delivery |
 | `SURGE_ENABLED` | true | Enable demand surge simulation |
-| `SURGE_ZONE` | ZONE_CENTRAL | Zone to surge |
-| `SURGE_MULTIPLIER` | 3.0 | Demand surge factor |
+| `SURGE_MIN_INTERVAL` | 600 | Seconds between surges (min) |
+| `SURGE_MAX_INTERVAL` | 1200 | Seconds between surges (max) |
+| `SURGE_MIN_DURATION` | 60 | Surge duration (min, seconds) |
+| `SURGE_MAX_DURATION` | 300 | Surge duration (max, seconds) |
+| `SURGE_MIN_MULTIPLIER` | 1.5 | Surge intensity (min) |
+| `SURGE_MAX_MULTIPLIER` | 4.0 | Surge intensity (max) |
 | `FRAUD_BURST` | true | Enable fraud cluster simulation |
-| `SAMPLE_ORDER_EVENTS` | 500 | Batch mode: number of order events |
-| `SAMPLE_COURIER_EVENTS` | 500 | Batch mode: number of courier events |
-
----
-
-## Planned Analytics (Milestone 2)
-
-The feed design was driven by the analytics we intend to implement in Milestone 2:
-
-### Use Case 1 – Windowed KPIs
-- Orders placed per 5-minute tumbling window, by zone
-- Revenue per 1-hour hopping window
-- Courier utilisation rate per 15-minute window
-
-*Why our feeds support this:* Every event carries `event_time`, `zone_id`, `order_value_eur`. The watermark on `event_time` with `LATE_EVENT_RATE` will demonstrate late-data handling.
-
-### Use Case 2 – Demand-Supply Health per Zone 
-- Join order feed (PLACED events awaiting assignment) with courier feed (ONLINE_IDLE count)
-- Compute `demand_supply_ratio = pending_orders / available_couriers` per zone per window
-- Alert when ratio > 3 (supply gap) or < 0.3 (oversupply)
-
-*Why our feeds support this:* Both feeds carry `zone_id`. Courier heartbeats maintain a current count of ONLINE_IDLE couriers per zone. Order PLACED events without a courier assignment signal unmet demand.
-
-### Use Case 3 – Anomaly Detection on Delivery Times
-- Compute rolling mean and std of `actual_delivery_minutes` per zone
-- Flag orders > mean + 3σ as anomalies (z-score outlier)
-- Handle late events: events arriving after watermark still trigger recomputation
-
-*Why our feeds support this:* `actual_delivery_minutes` is computed from event timestamps in the sequence. `impossible_duration` events (0.8% of orders) seed the anomaly signal. The `is_late` flag lets us tune watermark thresholds.
