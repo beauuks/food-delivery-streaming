@@ -57,9 +57,8 @@ Two consumer groups allow the Azure Stream Analytics Job and Spark to read indep
 ```
 Generator (Python CLI with event queue for realistic timing)
   └─► Azure Event Hubs (2 topics, 4 partitions each)
-        ├─► Azure Stream Analytics Job → Blob Storage (Parquet)
+        ├─► Azure Stream Analytics Job → Azure Blob Storage (Parquet at rest)
         └─► Spark Structured Streaming (local PySpark, Kafka protocol)
-              ├─► Raw Parquet → local storage
               └─► Aggregated metrics → Supabase (Postgres)
                     └─► Grafana Dashboard (auto-refresh, live map)
 ```
@@ -69,7 +68,7 @@ Generator (Python CLI with event queue for realistic timing)
 - Local PySpark 4.1.1 (Scala 2.13)
 - `spark-sql-kafka` connector for reading from Event Hubs via Kafka-compatible endpoint
 - Supabase (hosted Postgres) for aggregated metrics
-- Local Parquet for raw event storage
+- Azure Stream Analytics Job for raw event storage (Parquet to Azure Blob Storage)
 
 ### Event Queue (Realistic Timing)
 
@@ -99,17 +98,16 @@ All use cases run inside a single `foreachBatch` handler per stream (orders and 
 
 #### Stage 3: Output Sinks
 
-Two output paths:
-1. **Parquet → local storage** — raw events partitioned by year/month/day/hour
-2. **Supabase Postgres** — aggregated metrics with accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) to correctly accumulate windowed results across micro-batches
+Two output paths handled by separate components:
+1. **Azure Blob Storage (Parquet at rest)** — raw events written by Azure Stream Analytics Job, providing durable storage of all ingested events
+2. **Supabase Postgres** — aggregated metrics written by Spark with accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) to correctly accumulate windowed results across micro-batches
 
-### Parquet Output Structure
+### Parquet Output Structure (Azure Blob Storage)
 
+Written by Azure Stream Analytics Job to container `group6` on storage account `iesstsabdbaa`:
 ```
-data/output/
-├── raw/
-│   ├── orders/year=YYYY/month=MM/day=DD/hour=HH/*.parquet
-│   └── couriers/year=YYYY/month=MM/day=DD/hour=HH/*.parquet
+group6/
+├── stream-analytics/{date}/{time}/*.parquet
 ```
 
 ---
@@ -314,8 +312,7 @@ food-delivery-streaming/
 │   ├── schemas.py                # Spark StructType definitions
 │   ├── enrichment.py             # Restaurant reference data for broadcast joins
 │   ├── sinks/
-│   │   ├── postgres_sink.py      # Supabase Postgres upsert logic (accumulative)
-│   │   └── parquet_sink.py       # Local Parquet writer
+│   │   └── postgres_sink.py      # Supabase Postgres upsert logic (accumulative)
 │   └── requirements.txt          # pyspark, psycopg2-binary, python-dotenv
 ├── dashboard/
 │   └── grafana/

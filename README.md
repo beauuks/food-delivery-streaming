@@ -78,14 +78,12 @@ flowchart TD
         EH["Azure Event Hubs (2 topics, 4 partitions)"]
         ASA["Azure Stream Analytics Job"]
         SPARK["Spark Structured Streaming (local, Kafka protocol)"]
-        BLOB["Azure Blob Storage (Parquet)"]
+        BLOB["Azure Blob Storage (Parquet at rest)"]
         PG["Supabase Postgres (aggregated metrics)"]
         GRAF["Grafana Dashboard (live map + 20 panels)"]
-        LOCAL["Local Parquet (raw events)"]
 
         EH --> ASA --> BLOB
         EH --> SPARK
-        SPARK --> LOCAL
         SPARK --> PG --> GRAF
     end
 
@@ -297,9 +295,8 @@ Instead of a single fixed surge, the generator periodically triggers **random mu
 ```
 Generator (event queue)
   └─► Azure Event Hubs (2 topics, 4 partitions each, zone_id partition key)
-        ├─► Azure Stream Analytics Job → Blob Storage (Parquet)
+        ├─► Azure Stream Analytics Job → Azure Blob Storage (Parquet at rest)
         └─► Spark Structured Streaming (local PySpark, Kafka protocol)
-              ├─► Raw Parquet → local ./data/output/
               └─► Supabase Postgres (accumulative upserts)
                     └─► Grafana Dashboard (live map + 20 panels)
 ```
@@ -309,9 +306,11 @@ Generator (event queue)
 - **Runtime:** Local PySpark 4.1.1 (Scala 2.13), `spark-sql-kafka-0-10` connector, `spark.sql.session.timeZone=UTC`
 - **Input:** Two Kafka sources reading from the Event Hubs Kafka-compatible endpoint
 - **Processing:** Consolidated `foreachBatch` handlers (one per stream) to avoid py4j channel exhaustion
-- **Output:**
-  - Supabase Postgres via accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) so windows build correctly across batches
-  - Local Parquet partitioned by year/month/day/hour
+- **Output:** Supabase Postgres via accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) so windows build correctly across batches
+
+### Data at Rest (Azure Stream Analytics)
+
+Azure Stream Analytics Job reads from Event Hubs (consumer group `$Default`) and writes raw events as Parquet to Azure Blob Storage (`group6` container on `iesstsabdbaa`), providing durable data-at-rest storage.
 
 ### Use Cases Implemented
 
@@ -371,8 +370,7 @@ food-delivery-streaming/
 │   ├── schemas.py                     # Spark StructType definitions
 │   ├── enrichment.py                  # Restaurant reference data broadcast
 │   ├── sinks/
-│   │   ├── postgres_sink.py           # Supabase Postgres upsert logic
-│   │   └── parquet_sink.py            # Local Parquet writer
+│   │   └── postgres_sink.py           # Supabase Postgres upsert logic
 │   └── requirements.txt
 ├── config/                            # Shared config modules
 │   ├── eventhub_config.py             # Kafka-compatible EH connection

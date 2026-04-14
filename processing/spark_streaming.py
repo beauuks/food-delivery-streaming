@@ -30,7 +30,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql import DataFrame, SparkSession
 
-from config.spark_config import create_spark_session, get_checkpoint_path, get_output_path
+from config.spark_config import create_spark_session, get_checkpoint_path
 from config.eventhub_config import get_kafka_conf, ORDER_TOPIC, COURIER_TOPIC
 from processing.schemas import ORDER_SCHEMA, COURIER_SCHEMA
 from processing.sinks.postgres_sink import init_tables, write_metrics
@@ -272,19 +272,6 @@ def process_order_batch(batch_df, batch_id, restaurant_ref_bc):
             if fraud_agg.count() > 0:
                 write_metrics(fraud_agg.toPandas(), "fraud_alerts")
 
-        # --- Write raw Parquet ---
-        output_path = get_output_path("raw/orders")
-        (
-            batch_df
-            .withColumn("year", from_unixtime(col("event_time") / 1000, "yyyy").cast("int"))
-            .withColumn("month", from_unixtime(col("event_time") / 1000, "MM").cast("int"))
-            .withColumn("day", from_unixtime(col("event_time") / 1000, "dd").cast("int"))
-            .withColumn("hour", from_unixtime(col("event_time") / 1000, "HH").cast("int"))
-            .write.mode("append")
-            .partitionBy("year", "month", "day", "hour")
-            .parquet(output_path)
-        )
-
         batch_df.unpersist()
 
     except Exception as e:
@@ -371,18 +358,6 @@ def process_courier_batch(batch_df, batch_id):
             cur.close()
             conn.close()
 
-        # --- Write raw Parquet ---
-        output_path = get_output_path("raw/couriers")
-        (
-            batch_df
-            .withColumn("year", from_unixtime(col("event_time") / 1000, "yyyy").cast("int"))
-            .withColumn("month", from_unixtime(col("event_time") / 1000, "MM").cast("int"))
-            .withColumn("day", from_unixtime(col("event_time") / 1000, "dd").cast("int"))
-            .withColumn("hour", from_unixtime(col("event_time") / 1000, "HH").cast("int"))
-            .write.mode("append")
-            .partitionBy("year", "month", "day", "hour")
-            .parquet(output_path)
-        )
 
     except Exception as e:
         print(f"[couriers] Error in batch {batch_id}: {e}")

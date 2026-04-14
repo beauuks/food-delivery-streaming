@@ -44,10 +44,10 @@
         "type": "row",
         "title": "Live KPIs",
         "gridPos": {
+          "y": 0,
           "h": 1,
-          "w": 24,
           "x": 0,
-          "y": 0
+          "w": 24
         },
         "collapsed": false
       },
@@ -55,10 +55,10 @@
         "type": "stat",
         "title": "Total Orders (Last 5 min)",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 0,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -110,10 +110,10 @@
         "type": "stat",
         "title": "Revenue (Last 5 min)",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 4,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -157,10 +157,10 @@
         "type": "stat",
         "title": "Avg Prep Time",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 8,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -212,10 +212,10 @@
         "type": "stat",
         "title": "Cancellation Rate",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 12,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -267,10 +267,10 @@
         "type": "stat",
         "title": "SLA Breaches",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 16,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -321,10 +321,10 @@
         "type": "stat",
         "title": "Fraud Alerts",
         "gridPos": {
+          "y": 1,
           "h": 4,
-          "w": 4,
           "x": 20,
-          "y": 1
+          "w": 4
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -375,10 +375,10 @@
         "type": "geomap",
         "title": "Live Courier Map - Madrid",
         "gridPos": {
-          "h": 12,
-          "w": 24,
+          "y": 5,
+          "h": 20,
           "x": 0,
-          "y": 5
+          "w": 24
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -449,10 +449,10 @@
         "type": "timeseries",
         "title": "Orders per 5-min Window by Zone",
         "gridPos": {
-          "h": 8,
-          "w": 12,
+          "y": 25,
+          "h": 14,
           "x": 0,
-          "y": 29
+          "w": 12
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -499,10 +499,10 @@
         "type": "timeseries",
         "title": "Revenue per 5-min Window by Zone",
         "gridPos": {
-          "h": 8,
-          "w": 12,
+          "y": 25,
+          "h": 14,
           "x": 12,
-          "y": 5
+          "w": 12
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -548,10 +548,10 @@
         "type": "timeseries",
         "title": "Cancellation Rate by Zone (15-min Hopping Window)",
         "gridPos": {
-          "h": 8,
-          "w": 12,
+          "y": 39,
+          "h": 14,
           "x": 0,
-          "y": 25
+          "w": 12
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -616,10 +616,10 @@
         "type": "barchart",
         "title": "Current Cancellation Rate by Zone",
         "gridPos": {
-          "h": 8,
-          "w": 12,
+          "y": 39,
+          "h": 14,
           "x": 12,
-          "y": 25
+          "w": 12
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -667,10 +667,10 @@
         "type": "row",
         "title": "Demand-Supply Health",
         "gridPos": {
+          "y": 53,
           "h": 1,
-          "w": 24,
           "x": 0,
-          "y": 33
+          "w": 24
         },
         "collapsed": false
       },
@@ -678,10 +678,10 @@
         "type": "gauge",
         "title": "Zone Health Ratio (Current)",
         "gridPos": {
-          "h": 8,
-          "w": 10,
+          "y": 54,
+          "h": 14,
           "x": 0,
-          "y": 34
+          "w": 10
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -733,10 +733,10 @@
         "type": "timeseries",
         "title": "Health Ratio Over Time",
         "gridPos": {
-          "h": 8,
-          "w": 14,
+          "y": 54,
+          "h": 14,
           "x": 10,
-          "y": 34
+          "w": 14
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -801,10 +801,10 @@
         "type": "table",
         "title": "Demand vs Supply Detail",
         "gridPos": {
+          "y": 68,
           "h": 8,
-          "w": 24,
           "x": 0,
-          "y": 42
+          "w": 24
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -891,10 +891,10 @@
         "type": "row",
         "title": "Restaurant SLA Monitoring",
         "gridPos": {
+          "y": 76,
           "h": 1,
-          "w": 24,
           "x": 0,
-          "y": 50
+          "w": 24
         },
         "collapsed": false
       },
@@ -902,10 +902,10 @@
         "type": "table",
         "title": "Restaurant Prep Time Percentiles (Latest Window)",
         "gridPos": {
+          "y": 77,
           "h": 10,
-          "w": 16,
           "x": 0,
-          "y": 51
+          "w": 16
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -1014,10 +1014,10 @@
         "type": "barchart",
         "title": "Top Restaurants by p95 Prep Time",
         "gridPos": {
+          "y": 77,
           "h": 10,
-          "w": 8,
           "x": 16,
-          "y": 51
+          "w": 8
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -1064,10 +1064,10 @@
         "type": "row",
         "title": "Anomaly Detection & Late Data",
         "gridPos": {
+          "y": 87,
           "h": 1,
-          "w": 24,
           "x": 0,
-          "y": 61
+          "w": 24
         },
         "collapsed": false
       },
@@ -1075,10 +1075,10 @@
         "type": "timeseries",
         "title": "Delivery Time: Mean vs Anomaly Threshold (30-min Sliding Window)",
         "gridPos": {
+          "y": 88,
           "h": 8,
-          "w": 16,
           "x": 0,
-          "y": 62
+          "w": 16
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -1153,10 +1153,10 @@
         "type": "timeseries",
         "title": "Anomaly Count & Late Events per Window",
         "gridPos": {
+          "y": 88,
           "h": 8,
-          "w": 8,
           "x": 16,
-          "y": 62
+          "w": 8
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -1235,10 +1235,10 @@
         "type": "row",
         "title": "Fraud Detection",
         "gridPos": {
+          "y": 96,
           "h": 1,
-          "w": 24,
           "x": 0,
-          "y": 70
+          "w": 24
         },
         "collapsed": false
       },
@@ -1246,10 +1246,10 @@
         "type": "table",
         "title": "Fraud Alerts (Last Hour)",
         "gridPos": {
-          "h": 8,
-          "w": 24,
+          "y": 97,
+          "h": 10,
           "x": 0,
-          "y": 71
+          "w": 24
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
