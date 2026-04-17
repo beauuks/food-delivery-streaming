@@ -43,10 +43,9 @@ JSON was chosen over Avro for the streaming path because:
 
 | Consumer Group | Consumer | Purpose |
 |---|---|---|
-| `$Default` | Stream Analytics Job | Azure-managed query processing |
-| `spark-processing` | Spark Structured Streaming | Main analytics pipeline |
+| `spark-processing` | Spark Structured Streaming | Main analytics pipeline (use cases + Parquet output) |
 
-Two consumer groups allow the Azure Stream Analytics Job and Spark to read independently without interfering with each other's offsets.
+Spark manages consumer offsets internally via its checkpoint mechanism. A single consumer group is sufficient since all 4 streaming queries share the same Spark read streams.
 
 ---
 
@@ -55,20 +54,29 @@ Two consumer groups allow the Azure Stream Analytics Job and Spark to read indep
 ### Architecture
 
 ```
-Generator (Python CLI with event queue for realistic timing)
-  └─► Azure Event Hubs (2 topics, 4 partitions each)
-        ├─► Azure Stream Analytics Job → Azure Blob Storage (Parquet at rest)
-        └─► Spark Structured Streaming (local PySpark, Kafka protocol)
-              └─► Aggregated metrics → Supabase (Postgres)
-                    └─► Grafana Dashboard (auto-refresh, live map)
+Generator (Python CLI, AVRO serialization, event queue for realistic timing)
+  └─► Azure Event Hubs (2 topics, 4 partitions each, AVRO messages)
+        └─► Spark Structured Streaming (local PySpark 4.1.1, Kafka protocol)
+              ├─► Azure Blob Storage (Parquet at rest, via wasbs://)
+              └─► Supabase Postgres (aggregated metrics, accumulative upserts)
+                    └─► Grafana Dashboard (auto-refresh, live Madrid geomap)
 ```
 
 ### Runtime
 
 - Local PySpark 4.1.1 (Scala 2.13)
-- `spark-sql-kafka` connector for reading from Event Hubs via Kafka-compatible endpoint
+- `spark-sql-kafka-0-10` connector for reading from Event Hubs via Kafka-compatible endpoint (SASL_SSL, port 9093)
+- `spark-avro` for AVRO deserialization using `from_avro()`
+- `hadoop-azure` + `azure-storage` for writing Parquet to Azure Blob Storage via `wasbs://` protocol
 - Supabase (hosted Postgres) for aggregated metrics
-- Azure Stream Analytics Job for raw event storage (Parquet to Azure Blob Storage)
+- All timestamps in UTC (`spark.sql.session.timeZone = UTC`)
+
+### Serialization
+
+Events are serialized as **AVRO** by the generator using `fastavro` and the schema files in `schemas/`. Spark deserializes them using `from_avro()` with the same schema definitions. This ensures:
+- Schema enforcement at both producer and consumer
+- Binary compactness (smaller messages than JSON)
+- Consistent type handling (timestamp-millis, enums, unions)
 
 ### Event Queue (Realistic Timing)
 
@@ -83,31 +91,44 @@ This ensures Spark sees a realistic stream where each batch contains events from
 
 ### Pipeline Stages
 
-#### Stage 1: Parsing, Validation, Enrichment
+#### Stage 1: AVRO Deserialization, Validation, Enrichment
 
-- Read JSON from Event Hubs via Kafka protocol (`CAST(value AS STRING)`)
-- Parse into typed Spark schema using `from_json()` with StructType definitions matching Avro schemas
+- Read AVRO bytes from Event Hubs via Kafka protocol (binary `value` column)
+- Deserialize using `from_avro()` with the original AVRO schema definitions
 - Validation: drop rows with null `event_id` or `event_time`
 - Deduplicate: filter out events where `is_duplicate == true` (generator marks these)
 - Enrich orders with restaurant reference data (SLA tier, cuisine) via broadcast join on static DataFrame
-- Timestamps stored in UTC (`spark.sql.session.timeZone = UTC`)
 
-#### Stage 2: Consolidated foreachBatch Processing
+#### Stage 2: 4 Streaming Queries
 
-All use cases run inside a single `foreachBatch` handler per stream (orders and couriers), avoiding py4j communication channel exhaustion that occurs with multiple concurrent streaming queries.
+Spark runs 4 concurrent streaming queries:
+
+1. **order_processing** (`foreachBatch`) — runs all order-side use cases (UC1, UC2a demand side, UC2b, UC3a, UC3b), writes aggregated metrics to Supabase Postgres
+2. **courier_processing** (`foreachBatch`) — runs courier-side use cases (UC2a supply side, courier positions), writes to Supabase Postgres
+3. **orders_parquet_to_blob** (`.format("parquet")`) — writes raw parsed order events to Azure Blob Storage as Parquet
+4. **couriers_parquet_to_blob** (`.format("parquet")`) — writes raw parsed courier events to Azure Blob Storage as Parquet
+
+The `foreachBatch` handlers use accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) to correctly accumulate windowed results across micro-batches.
 
 #### Stage 3: Output Sinks
 
-Two output paths handled by separate components:
-1. **Azure Blob Storage (Parquet at rest)** — raw events written by Azure Stream Analytics Job, providing durable storage of all ingested events
-2. **Supabase Postgres** — aggregated metrics written by Spark with accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) to correctly accumulate windowed results across micro-batches
+Two output destinations, both written by Spark:
+1. **Azure Blob Storage (Parquet at rest)** — raw parsed events written directly via `wasbs://` protocol using `hadoop-azure` connector
+2. **Supabase Postgres** — aggregated metrics for dashboard consumption via `psycopg2`
 
 ### Parquet Output Structure (Azure Blob Storage)
 
-Written by Azure Stream Analytics Job to container `group6` on storage account `iesstsabdbaa`:
+Written by Spark Structured Streaming to container `group6` on storage account `iesstsabdbaa`:
 ```
-group6/
-├── stream-analytics/{date}/{time}/*.parquet
+wasbs://group6@iesstsabdbaa.blob.core.windows.net/
+├── parquet/
+│   ├── orders/*.parquet
+│   └── couriers/*.parquet
+└── checkpoints/
+    ├── orders/
+    ├── couriers/
+    ├── parquet_orders/
+    └── parquet_couriers/
 ```
 
 ---
@@ -341,8 +362,7 @@ food-delivery-streaming/
 | Event Hub (couriers) | `group_6_couriers` | 4 partitions, 24hr retention |
 | Consumer Group | `spark-processing` | On both event hubs |
 | Storage Account | `iesstsabdbaa` | Shared class storage |
-| Blob Container | `group6` | Parquet output via Stream Analytics |
-| Stream Analytics Job | group-6-analytics | Event Hubs → Blob Storage (Parquet) |
+| Blob Container | `group6` | Parquet at rest (written by Spark via wasbs://) + checkpoints |
 | Supabase Postgres | `zubtbmhmtlipkvcfimnk` | Aggregated metrics + courier positions |
 
 ---

@@ -3,12 +3,12 @@ spark_streaming.py
 ------------------
 Main entry point for the Spark Structured Streaming pipeline.
 
-Reads from Azure Event Hubs (via Kafka protocol), parses/validates/enriches
-events, runs all use cases, and writes to Parquet + DuckDB.
+Reads from Azure Event Hubs (via Kafka protocol), deserializes AVRO events,
+runs all use cases, and writes aggregated metrics to Supabase Postgres.
 
 Usage:
   spark-submit \
-    --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1 \
+    --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,org.apache.spark:spark-avro_2.13:4.1.1,org.apache.hadoop:hadoop-azure:3.3.1,com.microsoft.azure:azure-storage:8.6.6 \
     spark_streaming.py
 """
 
@@ -23,18 +23,29 @@ sys.path.insert(0, PROJECT_ROOT)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
+import json as json_lib
+
 from pyspark.sql.functions import (
     col, from_json, from_unixtime, count, sum as _sum, avg, window, lit,
     when, stddev, percentile_approx, approx_count_distinct, concat_ws,
     broadcast,
 )
+from pyspark.sql.avro.functions import from_avro
 from pyspark.sql import DataFrame, SparkSession
 
-from config.spark_config import create_spark_session, get_checkpoint_path
+from config.spark_config import create_spark_session, get_checkpoint_path, get_blob_path
 from config.eventhub_config import get_kafka_conf, ORDER_TOPIC, COURIER_TOPIC
 from processing.schemas import ORDER_SCHEMA, COURIER_SCHEMA
 from processing.sinks.postgres_sink import init_tables, write_metrics
 from processing.enrichment import get_restaurant_ref_df, SLA_THRESHOLDS
+
+
+# Load AVRO schemas as JSON strings for from_avro()
+_SCHEMA_DIR = os.path.join(PROJECT_ROOT, "schemas")
+
+def _load_avro_schema(filename: str) -> str:
+    with open(os.path.join(_SCHEMA_DIR, filename)) as f:
+        return json_lib.dumps(json_lib.load(f))
 
 
 def read_eventhub_stream(spark, topic: str) -> DataFrame:
@@ -48,12 +59,11 @@ def read_eventhub_stream(spark, topic: str) -> DataFrame:
     )
 
 
-def parse_and_validate(raw_df: DataFrame, schema) -> DataFrame:
-    """Parse JSON from Kafka value column, validate, and add event_timestamp."""
+def parse_and_validate(raw_df: DataFrame, avro_schema_json: str) -> DataFrame:
+    """Deserialize AVRO from Kafka value column, validate, and add event_timestamp."""
     parsed = (
         raw_df
-        .selectExpr("CAST(value AS STRING) AS json_body")
-        .select(from_json(col("json_body"), schema).alias("data"))
+        .select(from_avro(col("value"), avro_schema_json).alias("data"))
         .select("data.*")
     )
 
@@ -383,9 +393,11 @@ def main():
     orders_raw = read_eventhub_stream(spark, ORDER_TOPIC)
     couriers_raw = read_eventhub_stream(spark, COURIER_TOPIC)
 
-    # --- Parse and validate ---
-    orders_df = parse_and_validate(orders_raw, ORDER_SCHEMA)
-    couriers_df = parse_and_validate(couriers_raw, COURIER_SCHEMA)
+    # --- Parse and validate (AVRO deserialization) ---
+    order_avro_schema = _load_avro_schema("order_lifecycle_event.avsc")
+    courier_avro_schema = _load_avro_schema("courier_status_event.avsc")
+    orders_df = parse_and_validate(orders_raw, order_avro_schema)
+    couriers_df = parse_and_validate(couriers_raw, courier_avro_schema)
 
     # --- Single order query handling all use cases ---
     print("[pipeline] Starting order processing (all use cases)...")
@@ -407,8 +419,38 @@ def main():
         .start()
     )
 
+    # --- Parquet to Azure Blob Storage (data at rest) ---
+    orders_blob_path = get_blob_path("parquet/orders")
+    couriers_blob_path = get_blob_path("parquet/couriers")
+
+    print(f"[pipeline] Starting Parquet sink to Blob: {orders_blob_path}")
+    order_parquet_query = (
+        orders_df.writeStream
+        .format("parquet")
+        .option("checkpointLocation", f"{checkpoint_base}/parquet_orders")
+        .option("path", orders_blob_path)
+        .queryName("orders_parquet_to_blob")
+        .trigger(processingTime="10 seconds")
+        .start()
+    )
+
+    print(f"[pipeline] Starting Parquet sink to Blob: {couriers_blob_path}")
+    courier_parquet_query = (
+        couriers_df.writeStream
+        .format("parquet")
+        .option("checkpointLocation", f"{checkpoint_base}/parquet_couriers")
+        .option("path", couriers_blob_path)
+        .queryName("couriers_parquet_to_blob")
+        .trigger(processingTime="10 seconds")
+        .start()
+    )
+
     print("=" * 60)
-    print("[pipeline] 2 streaming queries started (orders + couriers)")
+    print("[pipeline] 4 streaming queries started:")
+    print("  - order_processing (use cases → Supabase)")
+    print("  - courier_processing (use cases → Supabase)")
+    print("  - orders_parquet_to_blob (data at rest → Azure Blob)")
+    print("  - couriers_parquet_to_blob (data at rest → Azure Blob)")
     print("[pipeline] Press Ctrl+C to stop.")
     print("=" * 60)
 

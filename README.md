@@ -75,15 +75,14 @@ flowchart TD
     end
 
     subgraph M2 ["MILESTONE 2: Stream Analytics"]
-        EH["Azure Event Hubs (2 topics, 4 partitions)"]
-        ASA["Azure Stream Analytics Job"]
-        SPARK["Spark Structured Streaming (local, Kafka protocol)"]
+        EH["Azure Event Hubs (2 topics, 4 partitions, AVRO)"]
+        SPARK["Spark Structured Streaming (local PySpark, Kafka protocol)"]
         BLOB["Azure Blob Storage (Parquet at rest)"]
         PG["Supabase Postgres (aggregated metrics)"]
         GRAF["Grafana Dashboard (live map + 20 panels)"]
 
-        EH --> ASA --> BLOB
         EH --> SPARK
+        SPARK --> BLOB
         SPARK --> PG --> GRAF
     end
 
@@ -293,24 +292,27 @@ Instead of a single fixed surge, the generator periodically triggers **random mu
 ### Pipeline
 
 ```
-Generator (event queue)
+Generator (AVRO serialization, event queue for realistic timing)
   └─► Azure Event Hubs (2 topics, 4 partitions each, zone_id partition key)
-        ├─► Azure Stream Analytics Job → Azure Blob Storage (Parquet at rest)
         └─► Spark Structured Streaming (local PySpark, Kafka protocol)
-              └─► Supabase Postgres (accumulative upserts)
+              ├─► Azure Blob Storage (Parquet at rest via wasbs://)
+              └─► Supabase Postgres (aggregated metrics, accumulative upserts)
                     └─► Grafana Dashboard (live map + 20 panels)
 ```
 
 ### Stream Processing (Spark Structured Streaming)
 
-- **Runtime:** Local PySpark 4.1.1 (Scala 2.13), `spark-sql-kafka-0-10` connector, `spark.sql.session.timeZone=UTC`
-- **Input:** Two Kafka sources reading from the Event Hubs Kafka-compatible endpoint
-- **Processing:** Consolidated `foreachBatch` handlers (one per stream) to avoid py4j channel exhaustion
-- **Output:** Supabase Postgres via accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) so windows build correctly across batches
-
-### Data at Rest (Azure Stream Analytics)
-
-Azure Stream Analytics Job reads from Event Hubs (consumer group `$Default`) and writes raw events as Parquet to Azure Blob Storage (`group6` container on `iesstsabdbaa`), providing durable data-at-rest storage.
+- **Serialization:** AVRO (generator serializes with `fastavro`, Spark deserializes with `from_avro()`)
+- **Runtime:** Local PySpark 4.1.1 (Scala 2.13), `spark-sql-kafka-0-10` + `spark-avro` + `hadoop-azure` connectors, `spark.sql.session.timeZone=UTC`
+- **Input:** Two Kafka sources reading from the Event Hubs Kafka-compatible endpoint (SASL_SSL, port 9093)
+- **Processing:** 4 streaming queries:
+  - `order_processing` — all order-side use cases → Supabase Postgres
+  - `courier_processing` — courier-side use cases → Supabase Postgres
+  - `orders_parquet_to_blob` — raw order events → Azure Blob Storage (Parquet)
+  - `couriers_parquet_to_blob` — raw courier events → Azure Blob Storage (Parquet)
+- **Output:**
+  - Azure Blob Storage: `wasbs://group6@iesstsabdbaa.blob.core.windows.net/parquet/{orders,couriers}/`
+  - Supabase Postgres: accumulative upserts for windowed metrics
 
 ### Use Cases Implemented
 
@@ -470,10 +472,10 @@ source venv/bin/activate && source .env
 cd processing
 rm -rf data   # Clear checkpoints on first run or after schema changes
 spark-submit \
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1 \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,org.apache.spark:spark-avro_2.13:4.1.1,org.apache.hadoop:hadoop-azure:3.3.1,com.microsoft.azure:azure-storage:8.6.6 \
   spark_streaming.py
 ```
-You'll see `[orders] Batch N: X events` and `[couriers] Batch N: Y events` logs as data flows through.
+You'll see `[orders] Batch N: X events` and `[couriers] Batch N: Y events` logs as data flows through. Parquet files will appear in Azure Blob Storage under `group6/parquet/`.
 
 **Terminal 3 — Grafana:**
 ```bash
