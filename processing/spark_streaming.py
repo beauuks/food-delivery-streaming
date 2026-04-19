@@ -165,7 +165,7 @@ def process_order_batch(batch_df, batch_id, restaurant_ref_bc):
                     window(col("event_timestamp"), "5 minutes"),
                     col("zone_id"),
                 )
-                .agg(count("*").alias("pending_demand"))
+                .agg(approx_count_distinct("order_id").alias("pending_demand"))
                 .select(
                     col("window.start").alias("window_start"),
                     col("window.end").alias("window_end"),
@@ -319,7 +319,7 @@ def process_courier_batch(batch_df, batch_id):
                     window(col("event_timestamp"), "5 minutes"),
                     col("zone_id"),
                 )
-                .agg(count("*").alias("available_supply"))
+                .agg(approx_count_distinct("courier_id").alias("available_supply"))
                 .select(
                     col("window.start").alias("window_start"),
                     col("window.end").alias("window_end"),
