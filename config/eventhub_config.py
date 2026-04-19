@@ -60,7 +60,6 @@ def get_kafka_conf(topic: str) -> dict:
         "kafka.security.protocol": "SASL_SSL",
         "kafka.sasl.mechanism": "PLAIN",
         "kafka.sasl.jaas.config": sasl_jaas,
-        "kafka.group.id": consumer_group,
         "startingOffsets": "latest",
         "kafka.request.timeout.ms": "60000",
         "kafka.session.timeout.ms": "60000",

@@ -286,6 +286,12 @@ def process_order_batch(batch_df, batch_id, restaurant_ref_bc):
             if fraud_agg.count() > 0:
                 write_metrics(fraud_agg.toPandas(), "fraud_alerts")
 
+        # --- Write raw events to Azure Blob Storage as Parquet ---
+        try:
+            batch_df.write.mode("append").parquet(get_blob_path("parquet/orders"))
+        except Exception as blob_err:
+            print(f"[orders] Blob write error (non-fatal): {blob_err}")
+
         batch_df.unpersist()
 
     except Exception as e:
@@ -372,6 +378,11 @@ def process_courier_batch(batch_df, batch_id):
             cur.close()
             conn.close()
 
+        # --- Write raw events to Azure Blob Storage as Parquet ---
+        try:
+            batch_df.write.mode("append").parquet(get_blob_path("parquet/couriers"))
+        except Exception as blob_err:
+            print(f"[couriers] Blob write error (non-fatal): {blob_err}")
 
     except Exception as e:
         print(f"[couriers] Error in batch {batch_id}: {e}")
@@ -384,7 +395,7 @@ def main():
     print("=" * 60)
 
     spark = create_spark_session()
-    spark.sparkContext.setLogLevel("WARN")
+    spark.sparkContext.setLogLevel("ERROR")
     init_tables()
 
     checkpoint_base = get_checkpoint_path("")
@@ -423,42 +434,55 @@ def main():
         .start()
     )
 
-    # --- Parquet to Azure Blob Storage (data at rest) ---
-    orders_blob_path = get_blob_path("parquet/orders")
-    couriers_blob_path = get_blob_path("parquet/couriers")
-
-    print(f"[pipeline] Starting Parquet sink to Blob: {orders_blob_path}")
-    order_parquet_query = (
-        orders_df.writeStream
-        .format("parquet")
-        .option("checkpointLocation", f"{checkpoint_base}/parquet_orders")
-        .option("path", orders_blob_path)
-        .queryName("orders_parquet_to_blob")
-        .trigger(processingTime="10 seconds")
-        .start()
-    )
-
-    print(f"[pipeline] Starting Parquet sink to Blob: {couriers_blob_path}")
-    courier_parquet_query = (
-        couriers_df.writeStream
-        .format("parquet")
-        .option("checkpointLocation", f"{checkpoint_base}/parquet_couriers")
-        .option("path", couriers_blob_path)
-        .queryName("couriers_parquet_to_blob")
-        .trigger(processingTime="10 seconds")
-        .start()
-    )
-
     print("=" * 60)
-    print("[pipeline] 4 streaming queries started:")
-    print("  - order_processing (use cases → Supabase)")
-    print("  - courier_processing (use cases → Supabase)")
-    print("  - orders_parquet_to_blob (data at rest → Azure Blob)")
-    print("  - couriers_parquet_to_blob (data at rest → Azure Blob)")
+    print("[pipeline] 2 streaming queries started:")
+    print("  - order_processing (use cases → Supabase + Parquet → Azure Blob)")
+    print("  - courier_processing (use cases → Supabase + Parquet → Azure Blob)")
     print("[pipeline] Press Ctrl+C to stop.")
     print("=" * 60)
 
-    spark.streams.awaitAnyTermination()
+    # Spark 4.1.1 has a bug in KafkaMicroBatchStream.metrics that crashes
+    # when some Kafka partitions have no new data. We catch and retry so
+    # the pipeline stays alive despite intermittent crashes.
+    while True:
+        try:
+            spark.streams.awaitAnyTermination(timeout=30000)
+            # Check if any query died
+            active = [q for q in spark.streams.active if q.isActive]
+            if not active:
+                print("[pipeline] All queries terminated. Exiting.")
+                break
+        except Exception as e:
+            err_msg = str(e)
+            if "Cannot invoke" in err_msg and "Option.get" in err_msg:
+                # Known Spark 4.1.1 metrics bug — restart failed queries
+                print("[pipeline] Spark metrics bug detected, restarting failed queries...")
+                spark.streams.resetTerminated()
+
+                # Restart order processing if it died
+                if not any(q.name == "order_processing" for q in spark.streams.active):
+                    print("[pipeline] Restarting order_processing...")
+                    orders_raw_new = read_eventhub_stream(spark, ORDER_TOPIC)
+                    orders_df_new = parse_and_validate(orders_raw_new, order_avro_schema)
+                    orders_df_new.writeStream \
+                        .foreachBatch(lambda df, bid: process_order_batch(df, bid, rest_ref)) \
+                        .option("checkpointLocation", f"{checkpoint_base}/orders") \
+                        .queryName("order_processing") \
+                        .start()
+
+                # Restart courier processing if it died
+                if not any(q.name == "courier_processing" for q in spark.streams.active):
+                    print("[pipeline] Restarting courier_processing...")
+                    couriers_raw_new = read_eventhub_stream(spark, COURIER_TOPIC)
+                    couriers_df_new = parse_and_validate(couriers_raw_new, courier_avro_schema)
+                    couriers_df_new.writeStream \
+                        .foreachBatch(lambda df, bid: process_courier_batch(df, bid)) \
+                        .option("checkpointLocation", f"{checkpoint_base}/couriers") \
+                        .queryName("courier_processing") \
+                        .start()
+            else:
+                print(f"[pipeline] Unexpected error: {e}")
+                break
 
 
 if __name__ == "__main__":
