@@ -74,10 +74,11 @@ def serialize_courier_events_to_avro(events: List[Dict[str, Any]], output_path: 
 
 
 def serialize_to_avro_bytes(event: Dict[str, Any], schema_file: str) -> bytes:
-    """Serialize a single event to AVRO bytes (for streaming to Kafka/Event Hubs)."""
+    """Serialize a single event to bare AVRO binary (no container header).
+    Spark's from_avro() expects raw single-record encoding, not the container format."""
     if not AVRO_AVAILABLE:
         return json.dumps(event).encode()
     schema = _load_schema(schema_file)
     buf = io.BytesIO()
-    writer(buf, schema, [_prepare_record(event)])
+    fastavro.schemaless_writer(buf, schema, _prepare_record(event))
     return buf.getvalue()

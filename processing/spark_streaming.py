@@ -61,9 +61,12 @@ def read_eventhub_stream(spark, topic: str) -> DataFrame:
 
 def parse_and_validate(raw_df: DataFrame, avro_schema_json: str) -> DataFrame:
     """Deserialize AVRO from Kafka value column, validate, and add event_timestamp."""
+    # mode=PERMISSIVE: old JSON messages in Event Hubs are parsed as null and filtered out
+    options = {"mode": "PERMISSIVE"}
     parsed = (
         raw_df
-        .select(from_avro(col("value"), avro_schema_json).alias("data"))
+        .select(from_avro(col("value"), avro_schema_json, options).alias("data"))
+        .filter(col("data").isNotNull())
         .select("data.*")
     )
 
@@ -75,9 +78,10 @@ def parse_and_validate(raw_df: DataFrame, avro_schema_json: str) -> DataFrame:
         (col("is_duplicate") == False) | col("is_duplicate").isNull()
     )
 
+    # AVRO's timestamp-millis logical type is already deserialized as Spark TIMESTAMP
     with_ts = deduped.withColumn(
         "event_timestamp",
-        from_unixtime(col("event_time") / 1000).cast("timestamp"),
+        col("event_time").cast("timestamp"),
     )
 
     return with_ts

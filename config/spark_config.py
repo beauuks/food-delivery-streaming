@@ -41,4 +41,4 @@ def get_blob_path(name: str) -> str:
 
 def get_checkpoint_path(name: str) -> str:
     """Return checkpoint path on Azure Blob Storage."""
-    return get_blob_path(f"checkpoints/{name}")
+    return get_blob_path(f"checkpoints-v2/{name}")
