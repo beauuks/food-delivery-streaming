@@ -45,7 +45,7 @@ JSON was chosen over Avro for the streaming path because:
 |---|---|---|
 | `spark-processing` | Spark Structured Streaming | Main analytics pipeline (use cases + Parquet output) |
 
-Spark manages consumer offsets internally via its checkpoint mechanism. A single consumer group is sufficient since all 4 streaming queries share the same Spark read streams.
+Spark manages consumer offsets internally via its checkpoint mechanism. Auto-generated group IDs per query prevent partition assignment conflicts.
 
 ---
 
@@ -99,16 +99,14 @@ This ensures Spark sees a realistic stream where each batch contains events from
 - Deduplicate: filter out events where `is_duplicate == true` (generator marks these)
 - Enrich orders with restaurant reference data (SLA tier, cuisine) via broadcast join on static DataFrame
 
-#### Stage 2: 4 Streaming Queries
+#### Stage 2: 2 Streaming Queries
 
-Spark runs 4 concurrent streaming queries:
+Spark runs 2 consolidated streaming queries:
 
-1. **order_processing** (`foreachBatch`) — runs all order-side use cases (UC1, UC2a demand side, UC2b, UC3a, UC3b), writes aggregated metrics to Supabase Postgres
-2. **courier_processing** (`foreachBatch`) — runs courier-side use cases (UC2a supply side, courier positions), writes to Supabase Postgres
-3. **orders_parquet_to_blob** (`.format("parquet")`) — writes raw parsed order events to Azure Blob Storage as Parquet
-4. **couriers_parquet_to_blob** (`.format("parquet")`) — writes raw parsed courier events to Azure Blob Storage as Parquet
+1. **order_processing** (`foreachBatch`) — runs all order-side use cases (UC1, UC2a demand side, UC2b, UC3a, UC3b), writes aggregated metrics to Supabase Postgres + raw events as Parquet to Azure Blob Storage
+2. **courier_processing** (`foreachBatch`) — runs courier-side use cases (UC2a supply side, courier positions), writes to Supabase Postgres + raw events as Parquet to Azure Blob Storage
 
-The `foreachBatch` handlers use accumulative upserts (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) to correctly accumulate windowed results across micro-batches.
+Each `foreachBatch` handler writes to both destinations: accumulative upserts to Postgres (`ON CONFLICT DO UPDATE SET count = count + excluded.count`) and Parquet files to Blob via `wasbs://`. A retry loop handles a known Spark 4.1.1 metrics bug by automatically restarting failed queries.
 
 #### Stage 3: Output Sinks
 
@@ -124,11 +122,9 @@ wasbs://group6@iesstsabdbaa.blob.core.windows.net/
 ├── parquet/
 │   ├── orders/*.parquet
 │   └── couriers/*.parquet
-└── checkpoints/
+└── checkpoints-v3/
     ├── orders/
-    ├── couriers/
-    ├── parquet_orders/
-    └── parquet_couriers/
+    └── couriers/
 ```
 
 ---

@@ -305,11 +305,9 @@ Generator (AVRO serialization, event queue for realistic timing)
 - **Serialization:** AVRO (generator serializes with `fastavro`, Spark deserializes with `from_avro()`)
 - **Runtime:** Local PySpark 4.1.1 (Scala 2.13), `spark-sql-kafka-0-10` + `spark-avro` + `hadoop-azure` connectors, `spark.sql.session.timeZone=UTC`
 - **Input:** Two Kafka sources reading from the Event Hubs Kafka-compatible endpoint (SASL_SSL, port 9093)
-- **Processing:** 4 streaming queries:
-  - `order_processing` — all order-side use cases → Supabase Postgres
-  - `courier_processing` — courier-side use cases → Supabase Postgres
-  - `orders_parquet_to_blob` — raw order events → Azure Blob Storage (Parquet)
-  - `couriers_parquet_to_blob` — raw courier events → Azure Blob Storage (Parquet)
+- **Processing:** 2 consolidated streaming queries with auto-restart on failure:
+  - `order_processing` — all order-side use cases → Supabase Postgres + Parquet → Azure Blob
+  - `courier_processing` — courier-side use cases → Supabase Postgres + Parquet → Azure Blob
 - **Output:**
   - Azure Blob Storage: `wasbs://group6@iesstsabdbaa.blob.core.windows.net/parquet/{orders,couriers}/`
   - Supabase Postgres: accumulative upserts for windowed metrics
