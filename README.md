@@ -8,19 +8,18 @@
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Team Structure](#team-structure)
-3. [Architecture Overview](#architecture-overview)
-4. [Feed Design](#feed-design)
+2. [Architecture Overview](#architecture-overview)
+3. [Feed Design](#feed-design)
    - [Feed 1: Order Lifecycle Events](#feed-1-order-lifecycle-events)
    - [Feed 2: Courier Status Events](#feed-2-courier-status-events)
    - [Design Justification](#design-justification)
-5. [Schema Design](#schema-design)
-6. [Data Generator](#data-generator)
-7. [Realism & Edge Cases](#realism--edge-cases)
-8. [Milestone 2: Stream Analytics Pipeline](#milestone-2-stream-analytics-pipeline)
-9. [Repository Structure](#repository-structure)
-10. [Quick Start (Milestone 1)](#quick-start-milestone-1)
-11. [Running the Full Pipeline (Milestone 2)](#running-the-full-pipeline-milestone-2)
+4. [Schema Design](#schema-design)
+5. [Data Generator](#data-generator)
+6. [Realism & Edge Cases](#realism--edge-cases)
+7. [Milestone 2: Stream Analytics Pipeline](#milestone-2-stream-analytics-pipeline)
+8. [Repository Structure](#repository-structure)
+9. [Quick Start (Milestone 1)](#quick-start-milestone-1)
+10. [Running the Full Pipeline (Milestone 2)](#running-the-full-pipeline-milestone-2)
 
 ---
 
@@ -40,20 +39,6 @@ This project implements a **real-time analytics pipeline** for a food delivery p
 - Aggregated metrics persisted to Supabase Postgres
 - Raw event Parquet storage on local disk + Azure Blob via Stream Analytics
 - A live Grafana dashboard featuring a Madrid geomap of couriers, KPIs, SLA monitoring, anomaly detection, and fraud alerts
-
----
-
-## Team Structure
-
-| Name | Role | Responsibilities |
-|------|------|-----------------|
-| Beau | Lead Engineer & Architect | Core system architecture, generator engineering, AVRO serialisation layer, schema design, infrastructure setup, sample data generation, and overall technical implementation |
-| Rania Mansouri | Project Lead & Feed Designer | Overall project coordination, feed design justification, analytics requirements mapping, milestone deliverable management |
-| Maciej | Generator Engineer | Python simulator support, demand model tuning, batch and stream mode orchestration |
-| Ana | Schema Designer | AVRO schema field definitions, type decisions, schema evolution strategy, null safety design |
-| Leen | Data Quality Lead | Edge case injection logic, streaming correctness validation, duplicate and late event handling |
-| Sebastian | Documentation Lead | README writing, milestone1_design.md, design notes, repository structure and organisation |
-
 
 ---
 
